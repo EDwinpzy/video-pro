@@ -1,3 +1,14 @@
+# Dongpiandi Next
+
+This repository is a planned GPL-3.0 Android TV derivative of Jellystack.
+The current commit imports the upstream Jellystack shell as a baseline; the
+Jellyfin and Seerr surfaces are not yet the Dongpiandi product.
+
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the target screens, service mapping,
+removed flows, and acceptance gates.
+
+The upstream Jellystack documentation follows.
+
 # Jellystack
 
 [![Google Play](https://img.shields.io/badge/Google_Play-Install-414141?logo=googleplay)](https://play.google.com/store/apps/details?id=app.jellystack.mobile)
