@@ -7,6 +7,9 @@ Jellyfin and Seerr surfaces are not yet the Dongpiandi product.
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the target screens, service mapping,
 removed flows, and acceptance gates.
 
+See [HANDOFF.md](HANDOFF.md) for the current implementation status, verified
+upstream service contracts, cross-device evidence, risks, and next tasks.
+
 The upstream Jellystack documentation follows.
 
 # Jellystack
