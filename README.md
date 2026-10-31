@@ -1,4 +1,4 @@
-# Dongpiandi Next
+# Video Pro
 
 This repository is a planned GPL-3.0 Android TV derivative of Jellystack.
 The current commit imports the upstream Jellystack shell as a baseline; the

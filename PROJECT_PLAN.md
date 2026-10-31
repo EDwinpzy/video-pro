@@ -1,6 +1,6 @@
-# Dongpiandi Next
+# Video Pro
 
-Dongpiandi Next is a planned Android TV frontend derived from Jellystack.
+Video Pro is a planned Android TV frontend derived from Jellystack.
 The project keeps the upstream Compose for TV shell and replaces the
 Jellyfin/Seerr product flows with Dongpiandi's official account, catalog,
 playback, favorites, and watch-history services.
@@ -9,7 +9,7 @@ playback, favorites, and watch-history services.
 
 - Upstream baseline: `Darkatek7/jellystack` at `c6eef175c09c4c413aeede37888f4f8ce978b9a2`
 - Current state: project shell and migration plan only
-- Target application ID: `com.dongpiandi.next`
+- Target application ID: `com.dongpiandi.videopro`
 - License: GPL-3.0; every distributed derivative must comply with the upstream license
 
 The current code still contains Jellyfin and Seerr screens and behavior. They
