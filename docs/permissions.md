@@ -1,5 +1,11 @@
 # Android Permissions
 
+> **Scope (2026-11-05):** The official TV application is
+> [`frontend-tv`](../frontend-tv). The inherited KMP and experimental modules
+> have separate manifests and permission gates; the details below do not
+> substitute for checking the official APK's merged manifest. See
+> [Repository layout and release authority](repository-layout.md).
+
 The release manifest is checked against an allowlist by `:app-android:verifyReleaseManifestPermissions`.
 
 | Permission | Purpose | When requested |

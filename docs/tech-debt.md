@@ -1,5 +1,11 @@
 # Tech debt and cleanup backlog
 
+> **Scope (2026-11-05):** This audit primarily covers the inherited KMP tree.
+> The official TV app is [`frontend-tv`](../frontend-tv), with its own
+> `testDebugUnitTest` and `lintDebug` gate. KMP debt is real but does not
+> authorize publishing the experimental `app-tv` module. See
+> [Repository layout and release authority](repository-layout.md).
+
 Result of a full repository audit (October 2026). Line numbers refer to commit `b414b17` unless stated otherwise.
 
 - **Priority:** P0 = bug, data loss, privacy or release risk · P1 = blocks maintainability · P2 = cleanup · P3 = cosmetic

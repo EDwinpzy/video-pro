@@ -1,5 +1,11 @@
 # Video Pro
 
+> **Release status (2026-11-05):** The official TV source is
+> [`frontend-tv`](frontend-tv), version `0.3.1` (`versionCode 7`). This plan
+> records the earlier KMP migration and remains historical/experimental where
+> it differs from the current release. See
+> [`docs/repository-layout.md`](docs/repository-layout.md).
+
 Video Pro is a planned Android TV frontend derived from Jellystack.
 The project keeps the upstream Compose for TV shell and replaces the
 Jellyfin/Seerr product flows with Dongpiandi's official account, catalog,

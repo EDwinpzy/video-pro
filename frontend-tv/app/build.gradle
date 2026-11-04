@@ -122,13 +122,11 @@ android {
     // 2026-10-11：按用户要求，所有变体关闭内容准入门禁；会员/激活功能仍可主动访问。
     // v1.35（2026-09-21）：移动端长按画面左右两侧 = 3.0x 倍速播放（网页版同款、仅触屏）；
     // 并含播放器渲染层 key 失配修复（黑屏只剩声音 / 错误卡弹窗后音频仍响 / 切信号源无效）。
-    // ---- 版本号规则（2026-09-22 重置）----
-    // 用户要求：APK 版本与更新记录清零，从 V1.0 重新开始，之后每版 +0.1。
-    //   versionName = V1.0 / V1.1 / V1.2 …（界面展示用）
-    //   versionCode = 主版本×100 + 次版本×10 → V1.0=100、V1.1=110、V1.2=120、V2.0=200
-    // 分发包必须严格递增 versionCode，Android 系统才允许覆盖安装。
-    // 0.3.0 / 6 was published by the KMP TV shell. This restored legacy
-    // frontend is authoritative again, so keep both values strictly above it.
+    // ---- 版本号规则（2026-11-05 恢复正式前端后）----
+    // 0.3.0 / 6 由实验 KMP TV 壳发布；本目录是恢复后的正式前端，必须保持
+    // versionName 与 versionCode 都严格高于已发布版本。
+    // 使用 MAJOR.MINOR.PATCH；versionCode 为独立严格递增整数，不再使用公式。
+    // 版本规则见 docs/versioning.md；发布前只在本文件修改这两个值。
     versionCode(apkVersionCodeOverride ? Integer.parseInt(apkVersionCodeOverride.toString()) : 7)
     versionName(apkVersionNameOverride ? apkVersionNameOverride.toString() : "0.3.1")
         // 方案 §5：双 ABI split 思路——真机 arm64/v7a + 模拟器 x86_64（开发验证用）

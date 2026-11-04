@@ -1,5 +1,11 @@
 # AGENTS.md
 
+> **Current TV release (2026-11-05):** `frontend-tv/` is the only official TV
+> application and release target (`0.3.1`, `versionCode 7`,
+> `com.dongpiandi.videopro`). The root `app-tv`/`design-tv` KMP tree is
+> experimental; never version, build for distribution, or publish it. Read
+> `docs/repository-layout.md` before touching TV source or version fields.
+
 Guidance for coding agents (and humans) working in this repository. Keep it short and current; details live in `docs/`.
 
 ## Project

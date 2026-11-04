@@ -5,6 +5,12 @@ restores the complete legacy frontend after the experimental KMP TV shell and
 keeps all login, native-input, startup, focus, playback, and low-tier
 performance work.
 
+The version in `app/build.gradle` is authoritative. Repository-wide release
+rules, the experimental KMP boundary, and the migration-certificate policy are
+documented in
+[`docs/repository-layout.md`](../docs/repository-layout.md) and
+[`docs/versioning.md`](../docs/versioning.md).
+
 Home tabs are movie, series, domestic animation, short drama, and variety,
 followed by search and account. Each hero shows up to five recent titles from
 its own category. The first recommendation section uses the official total
@@ -33,7 +39,7 @@ framework `EditText` controls, so text editing, candidates, and IME presentation
 are owned by the projector's installed input method rather than an in-app
 keyboard.
 
-The application shell has three intentional changes:
+The application shell has four intentional changes:
 
 - The app identity is `com.dongpiandi.videopro`.
 - The initial screen is the migrated film home; the top bar exposes film and

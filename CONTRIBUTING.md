@@ -1,6 +1,12 @@
-# Contributing to Jellystack
+# Contributing to Video Pro
 
-Thanks for helping improve Jellystack.
+> **Official TV source (2026-11-05):** Build and test the current TV
+> application from [`frontend-tv`](frontend-tv) with its own Gradle wrapper.
+> The root KMP commands below cover inherited mobile and experimental migration
+> code, not the official TV release. See
+> [Repository layout and release authority](docs/repository-layout.md).
+
+Thanks for helping improve Video Pro.
 
 ## Before you start
 

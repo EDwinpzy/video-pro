@@ -1,5 +1,12 @@
 # Building Jellystack
 
+> **Official TV build (2026-11-05):** Build from [`frontend-tv`](../frontend-tv),
+> not from the root `:app-tv` module. The official gate is
+> `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`
+> after `Set-Location .\frontend-tv`. Root KMP commands below validate inherited
+> mobile/experimental code only. See
+> [Repository layout and release authority](repository-layout.md).
+
 This is the single reference for build and verification commands. CI (`.github/workflows/ci.yml`) runs the same gates.
 
 ## Requirements
