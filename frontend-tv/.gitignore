@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+**/build/
+app/.cxx/
+local.properties
+
+/dist/
+*.hprof
+*.log

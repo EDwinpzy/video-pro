@@ -1,5 +1,11 @@
 # Video Pro 交接文档
 
+> **2026-11-05 发布状态：** 正式 TV 应用是 [`frontend-tv`](frontend-tv)
+>（`0.3.1` / `versionCode 7`）。下文关于根目录 KMP TV 迁移的记录属于历史
+> 与实验资料，不再是发布路径。目录与版本边界见
+> [`docs/repository-layout.md`](docs/repository-layout.md) 和
+> [`docs/versioning.md`](docs/versioning.md)。
+
 更新时间：2026-10-31
 
 ## 1. 项目目标

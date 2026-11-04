@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="system_dictation_service_label">Video Pro voice input</string>
+    <string name="system_dictation_service_description">Press and hold the remote voice key while an input field is active to insert speech as text. No assistant window or spoken answer is opened.</string>
+    <string name="system_dictation_permission_required">Allow microphone access to use voice input.</string>
+    <string name="system_dictation_failed">Voice recognition failed. Try again.</string>
+    <string name="system_dictation_engine_unavailable">The projector voice engine is unavailable.</string>
+    <string name="system_dictation_timeout">No speech was recognized.</string>
+</resources>

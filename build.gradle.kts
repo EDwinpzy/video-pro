@@ -31,11 +31,12 @@ subprojects {
 spotless {
     kotlin {
         target("**/*.kt", "**/*.kts")
-        targetExclude("**/build/**")
+        targetExclude("**/build/**", "frontend-tv/**")
         ktlint(libs.versions.ktlint.get())
     }
     kotlinGradle {
         target("**/*.gradle.kts")
+        targetExclude("frontend-tv/**")
         ktlint(libs.versions.ktlint.get())
     }
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="startup_failed">加载未完成，请检查网络后重试。</string>
+    <string name="startup_retry">重新加载</string>
+</resources>

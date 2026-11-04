@@ -1,66 +1,95 @@
 # Video Pro
 
-This repository is a planned GPL-3.0 Android TV derivative of Jellystack.
-The current commit imports the upstream Jellystack shell as a baseline; the
-Jellyfin and Seerr surfaces are not yet the Dongpiandi product.
+Video Pro is a GPL-3.0 Android TV client derived from Jellystack. The official
+TV application lives in [`frontend-tv`](frontend-tv). The root Kotlin
+Multiplatform tree is retained for upstream mobile code, shared components, and
+experimental migration work.
 
-See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the target screens, service mapping,
-removed flows, and acceptance gates.
+## Current release
 
-See [HANDOFF.md](HANDOFF.md) for the current implementation status, verified
-upstream service contracts, cross-device evidence, risks, and next tasks.
+| Item | Value |
+| --- | --- |
+| Release source | [`frontend-tv`](frontend-tv) |
+| Current version | `0.3.1` (`versionCode 7`) |
+| Version authority | `frontend-tv/app/build.gradle` |
+| Android package | `com.dongpiandi.videopro` |
+| Release status | Current Android TV application |
+| Experimental only | Root `app-tv` and `design-tv` KMP migration |
+| Local artifact policy | `frontend-tv/dist/` is ignored and never committed |
 
-The upstream Jellystack documentation follows.
+`frontend-tv` restores the complete legacy-oriented TV frontend as the
+authoritative application. It keeps the native account, password, and search
+inputs; remembered credentials and automatic sign-in; the startup and Home
+loading gate; remote-focus navigation; playback; system voice dictation; and
+the low-tier TV performance work.
 
-# Jellystack
+The root `app-tv` module also uses `com.dongpiandi.videopro`, but it is an
+earlier experimental KMP shell. Do not build, version, or publish a store
+artifact from it. See [Repository layout and release authority](docs/repository-layout.md)
+for the complete boundary and [Versioning and releases](docs/versioning.md)
+before changing either version field.
 
-[![Google Play](https://img.shields.io/badge/Google_Play-Install-414141?logo=googleplay)](https://play.google.com/store/apps/details?id=app.jellystack.mobile)
-[![CI](https://github.com/Darkatek7/jellystack/actions/workflows/ci.yml/badge.svg)](https://github.com/Darkatek7/jellystack/actions/workflows/ci.yml)
-[![Security](https://github.com/Darkatek7/jellystack/actions/workflows/security.yml/badge.svg)](https://github.com/Darkatek7/jellystack/actions/workflows/security.yml)
-[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-7c4dff.svg)](LICENSE)
+## Login recovery
 
-Jellystack is a privacy-focused Jellyfin and Seerr client with a native Android experience. Browse and play your own media, manage requests, download for offline use, and keep playback state in sync—without a Jellystack cloud, ads, analytics, or tracking.
+Account discovery uses a domestic DNS-over-HTTPS resolver and falls back to the
+system resolver. This avoids intermittent login failures when router DNS
+returns an unreachable rotating CDN address. Invalid credentials still produce
+a normal server-side `401`; transport failures are reported separately.
 
-## Highlights
+## Quick start
 
-- Jellyfin libraries, favourites, watched state, progress, search, and Quick Connect
-- Direct Play and HLS playback with audio, subtitle, and quality selection
-- Offline downloads stored in app-specific storage
-- Seerr discovery, requests, seasons, request status, trailers, and recommendations
-- Cinematic details with cast, ratings, streams, collections, and similar titles
-- Phone and tablet layouts, English and German, light and dark themes
-- Contextual Cast permissions and an optional biometric app lock
-- A remote-first Android TV, Google TV, and Fire TV interface
+Requirements: JDK 17 and the Android SDK configured for the `frontend-tv`
+project. Run commands from the repository root in PowerShell:
 
-Android is the stable, published platform. The shared Kotlin Multiplatform code and iOS host remain experimental; iOS is not currently distributed as a supported release.
-
-## Privacy
-
-Jellystack connects directly to servers configured by the user. Server credentials and tokens are stored in the platform-protected credential store. The app has no analytics SDK, automatic log upload, advertising, or developer-operated media proxy.
-
-See [Privacy](docs/privacy.md), [Permissions](docs/permissions.md), and the [German privacy policy](privacy-policy-de).
-
-## Build
-
-Requirements: JDK 17 and Android SDK API 36 (Xcode on macOS for the experimental iOS targets). Run Gradle from the repository root:
-
-```bash
-./gradlew :app-android:assembleDebug
-./gradlew :app-tv:assembleDebug
+```powershell
+Set-Location .\frontend-tv
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries.
+The debug APK is written under `frontend-tv/build/optimal-tv/app/outputs/apk/`.
+Device tests are described in [`frontend-tv/README.md`](frontend-tv/README.md).
 
-The TV app uses a separate GMS-free application module while sharing Jellyfin, Seerr, settings, and playback logic with mobile. See [Android TV and Fire TV](docs/android-tv.md) for emulator setup, remote controls, builds, testing, and store submission.
+The root KMP project remains available for upstream mobile development and the
+experimental TV migration:
 
-## Contributing
+```powershell
+.\gradlew.bat :app-android:assembleDebug
+.\gradlew.bat :app-tv:assembleDebug
+```
 
-Issues, discussions, and pull requests are welcome. Every change—including maintainer changes—lands through a pull request with required CI checks.
+These KMP commands do not validate or produce the official TV release.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md) before contributing.
+## Repository map
 
-## License and independence
+| Path | Responsibility |
+| --- | --- |
+| `frontend-tv/` | Official standalone Android TV application and release source |
+| `frontend-tv/docs/` | TV performance and acceptance records |
+| `app-android/`, `design/`, `players/`, `shared-*` | Inherited KMP mobile and shared code |
+| `app-tv/`, `design-tv/`, `dongpian-data/` | Experimental KMP TV migration; not a release target |
+| `docs/` | Repository-level architecture, build, TV, privacy, and release documentation |
+| `scripts/` | Root KMP verification and migration tooling |
 
-Jellystack is licensed under [GPL-3.0](LICENSE). See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for dependencies.
+Generated Gradle output, `local.properties`, APK/AAB files, keystores, logs,
+captures, and `frontend-tv/dist/` are local artifacts and remain untracked.
 
-Jellystack is an independent community project and is not affiliated with or endorsed by Jellyfin, the Jellyfin project, Seerr, or their maintainers.
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Repository layout and release authority](docs/repository-layout.md)
+- [Building and verification](docs/building.md)
+- [Versioning and releases](docs/versioning.md)
+- [Android TV and Fire TV](docs/android-tv.md)
+- [Current implementation handoff](HANDOFF.md)
+- [Release notes](RELEASE_NOTES.md)
+- [Privacy](docs/privacy.md), [permissions](docs/permissions.md), and the
+  [German privacy policy](privacy-policy-de)
+
+## Upstream and license
+
+This repository is a derivative of [Jellystack](https://github.com/Darkatek7/jellystack),
+copyright its upstream contributors, and is licensed under
+[GPL-3.0](LICENSE). See [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+Jellystack and Video Pro are independent community projects and are not
+affiliated with or endorsed by Jellyfin, the Jellyfin project, Seerr, or their
+maintainers.

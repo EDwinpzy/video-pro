@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="system_dictation_service_label">Video Pro 语音输入</string>
+    <string name="system_dictation_service_description">输入框激活时按住遥控器语音键，松开后把语音识别成文字填入光标位置；不打开语音助手，也不播放回答。</string>
+    <string name="system_dictation_permission_required">请先允许麦克风权限。</string>
+    <string name="system_dictation_failed">语音识别失败，请重试。</string>
+    <string name="system_dictation_engine_unavailable">当前设备无法使用原厂语音识别引擎。</string>
+    <string name="system_dictation_timeout">没有识别到语音。</string>
+</resources>

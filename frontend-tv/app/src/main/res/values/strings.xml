@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name 由 productFlavors 的 resValue 提供（v1.17：内测版/公测版双应用名） -->
+</resources>

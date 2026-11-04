@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.dongpiandi.videopro" />
+        <package android:name="com.jmgo.ai.voice" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Dictation Probe"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".DictationProbeActivity"
+            android:exported="true" />
+
+        <receiver
+            android:name=".DictationProbeActivity$SpeechReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongpiandi.videopro.probe.PLAY_SPEECH" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

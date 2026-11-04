@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="system_dictation_service_label">Video Pro Spracheingabe</string>
+    <string name="system_dictation_service_description">Halte die Sprachtaste der Fernbedienung gedrückt, während ein Eingabefeld aktiv ist, um Sprache als Text einzufügen. Es wird kein Assistent geöffnet.</string>
+    <string name="system_dictation_permission_required">Erlaube den Mikrofonzugriff für die Spracheingabe.</string>
+    <string name="system_dictation_failed">Die Spracherkennung ist fehlgeschlagen. Versuche es erneut.</string>
+    <string name="system_dictation_engine_unavailable">Die Spracheingabe des Projektors ist nicht verfügbar.</string>
+    <string name="system_dictation_timeout">Es wurde keine Sprache erkannt.</string>
+</resources>

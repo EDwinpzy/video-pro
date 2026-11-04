@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_retry_sync">重试同步</string>
+    <string name="playback_http_unavailable">片源暂不可用（HTTP %1$d），已完成链接刷新和备用源尝试。可重试或手动换源。</string>
+    <string name="playback_failure_options">可重试播放，或选择其他片源。</string>
+    <string name="playback_change_source">换源</string>
+</resources>

@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.3.1 (Video Pro TV)
+
+- Restore the complete legacy-oriented TV frontend as the authoritative Video Pro application after the experimental KMP shell.
+- Keep native account, password, and search inputs; remembered credentials and automatic sign-in; the startup and Home loading gate; remote-focus navigation; playback; voice dictation; and low-tier TV performance work.
+- Fix intermittent login failures by resolving the account service through a domestic DNS-over-HTTPS resolver with the system resolver as fallback.
+- Preserve cancellation-sensitive credential clearing and account-scoped local data when sign-in is cancelled or the account changes.
+- Pass 608 unit tests and Android lint with zero errors, and pass both targeted S621 device tests. The tested build is `0.3.1` (`versionCode 7`).
+
 ## 0.17.2 (TV)
 
 - Play with real Direct Play and surround passthrough; when Jellyfin has to transcode, it picks the best audio the TV supports (E-AC3 or AC3 5.1) and switches to stereo only when no sound arrives.

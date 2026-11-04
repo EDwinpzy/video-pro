@@ -1,5 +1,11 @@
 # Architecture
 
+> **Production boundary (2026-11-05):** The official TV application is the
+> standalone [`frontend-tv`](../frontend-tv) project (`0.3.1`, `versionCode 7`).
+> The KMP module graph below describes inherited upstream and experimental
+> migration code; it is not the release source. See
+> [Repository layout and release authority](repository-layout.md).
+
 Jellystack is a Kotlin Multiplatform project with shared domain, networking, persistence, playback coordination, and Compose UI. Android phone/tablet and Android TV / Fire TV are the released platforms, and the iOS host is experimental.
 
 ## Modules

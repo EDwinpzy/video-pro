@@ -1,5 +1,12 @@
 # Android TV, Google TV, and Fire TV
 
+> **Current release (2026-11-05):** The official TV app is
+> [`frontend-tv`](../frontend-tv), version `0.3.1` (`versionCode 7`). Its
+> version source is `frontend-tv/app/build.gradle`. The root `app-tv` build and
+> package paths below document the experimental KMP migration and do not
+> produce the official release. See
+> [Repository layout and release authority](repository-layout.md).
+
 Jellystack TV is a remote-first companion build in the same Kotlin Multiplatform repository. It shares server, authentication, metadata, settings, and playback code with Jellystack mobile while using a dedicated Compose for TV interface.
 
 It uses the package ID `app.jellystack.mobile`; its `versionName` and `versionCode` live in `app-tv/build.gradle.kts`.
