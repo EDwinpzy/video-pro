@@ -63,7 +63,11 @@ class VodPrefetchFailureTest {
                         else -> 400 to """{"error":"播放线路不可用"}"""
                     }
                     val bytes = body.toByteArray(Charsets.UTF_8)
-                    val header = "HTTP/1.1 $status Fixture\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+                    val header =
+                        "HTTP/1.1 $status Fixture\r\n" +
+                            "Content-Type: application/json\r\n" +
+                            "Content-Length: ${bytes.size}\r\n" +
+                            "Connection: close\r\n\r\n"
                     it.getOutputStream().write(header.toByteArray() + bytes)
                 }
             }
