@@ -49,6 +49,15 @@ JDK 17, Android SDK 36. Always run Gradle from the repository root.
 
 The full CI gate is listed in `docs/building.md` and mirrors `.github/workflows/ci.yml`. Before finishing a change, run `spotlessCheck detekt` plus the unit tests of every module you touched; for UI changes also validate screenshots.
 
+## Git and GitHub
+
+- Every completed update must be committed and pushed to GitHub. Do not leave finished work only in the local working tree.
+- Keep commits focused. Stage only the files or hunks that belong to the update; never include unrelated user changes, generated files, secrets, APKs, or AABs just to make the tree clean.
+- Work on a short-lived branch from `main`. Branches created by Codex use `codex/<topic>`; push the branch and open a pull request. Do not push directly to protected `main`.
+- Use focused commit messages such as `docs: add versioning policy`, `fix(tv): handle playback failure`, or `test(shared-core): cover request rules`.
+- Before handoff, verify that the update's files are committed, the branch is pushed, and `git status -sb` does not show the branch as ahead of its remote.
+- A successful push is not a release. Bump versions, create release tags, and publish notes only when following [Versioning and releases](docs/versioning.md).
+
 ## Architecture rules
 
 - Jellyfin is authoritative for library identity, playback, progress, favourites, watched state, streams, and availability. Seerr only enriches discovery and requests and must never block Jellyfin playback.
@@ -108,4 +117,5 @@ Style: camelCase test names, `runTest` for coroutines, no real dispatchers or `d
 - `docs/architecture.md` – modules and rules
 - `docs/building.md` – all commands
 - `docs/android-tv.md` – TV builds, devices, store submission
+- `docs/versioning.md` – version names, version codes, tags, and release preparation
 - `docs/tech-debt.md` – known problems and the cleanup backlog; check it before large refactors

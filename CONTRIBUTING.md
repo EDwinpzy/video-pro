@@ -20,11 +20,15 @@ macOS and Xcode are required for iOS compilation. iOS is experimental.
 1. Fork the repository and branch from `main`.
 2. Keep changes focused and add tests for changed behavior (see the testing policy in [AGENTS.md](AGENTS.md)).
 3. Run `./gradlew spotlessCheck detekt` plus the unit tests of every module you touched, or the full CI gate from [Building](docs/building.md).
-4. Open a pull request using the template.
+4. Commit only the files or hunks for the change, push the branch to GitHub, and open a pull request using the template.
 
 `main` is protected. All changes use pull requests, linear history, and squash merges. Force pushes to `main` are disabled.
 
+Every completed update must exist on GitHub. Do not leave finished work only in a local working tree, and do not commit unrelated in-progress changes to make the tree look clean.
+
 ## Release artifacts
+
+Follow [Versioning and releases](docs/versioning.md) for version bumps, tag names, and release preparation.
 
 GitHub releases contain source code and release notes only. Android App Bundles are built and retained locally for direct upload to Google Play Console; do not attach `.aab` files to GitHub releases or commits.
 

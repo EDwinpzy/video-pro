@@ -10,6 +10,9 @@ removed flows, and acceptance gates.
 See [HANDOFF.md](HANDOFF.md) for the current implementation status, verified
 upstream service contracts, cross-device evidence, risks, and next tasks.
 
+See the [documentation index](docs/README.md) for architecture, build, TV,
+privacy, versioning, and release guidance.
+
 The upstream Jellystack documentation follows.
 
 # Jellystack
@@ -49,7 +52,7 @@ Requirements: JDK 17 and Android SDK API 36 (Xcode on macOS for the experimental
 ./gradlew :app-tv:assembleDebug
 ```
 
-See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries.
+See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries. See [Versioning and releases](docs/versioning.md) before changing version fields, tagging, or publishing.
 
 The TV app uses a separate GMS-free application module while sharing Jellyfin, Seerr, settings, and playback logic with mobile. See [Android TV and Fire TV](docs/android-tv.md) for emulator setup, remote controls, builds, testing, and store submission.
 
