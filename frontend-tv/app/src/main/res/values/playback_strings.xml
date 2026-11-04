@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_retry_sync">Retry sync</string>
+    <string name="playback_http_unavailable">The source is unavailable (HTTP %1$d). Refresh and backup attempts have finished. Retry or choose another source.</string>
+    <string name="playback_failure_options">Retry playback or choose another source.</string>
+    <string name="playback_change_source">Change source</string>
+</resources>

@@ -1,8 +1,17 @@
 # Video Pro
 
-This repository is a planned GPL-3.0 Android TV derivative of Jellystack.
-The current commit imports the upstream Jellystack shell as a baseline; the
-Jellyfin and Seerr surfaces are not yet the Dongpiandi product.
+This repository is a GPL-3.0 Android TV derivative of Jellystack.
+
+> **Current TV release source:** [`frontend-tv`](frontend-tv) is the
+> authoritative production TV application (`0.3.1`, `versionCode 7`). The KMP
+> `app-tv`/`design-tv` migration is retained as experimental reference and is
+> not the current TV release path.
+
+The authoritative TV application is the complete legacy-oriented frontend in
+[`frontend-tv`](frontend-tv), backed by Dongpiandi's official account and
+catalog services. It retains the native login/search inputs, remembered login,
+startup gate, remote focus work, playback fixes, voice support, and low-tier TV
+performance optimizations.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) for the target screens, service mapping,
 removed flows, and acceptance gates.
@@ -10,7 +19,12 @@ removed flows, and acceptance gates.
 See [HANDOFF.md](HANDOFF.md) for the current implementation status, verified
 upstream service contracts, cross-device evidence, risks, and next tasks.
 
-The upstream Jellystack documentation follows.
+See the [documentation index](docs/README.md) for architecture, build, TV,
+privacy, versioning, and release guidance.
+
+The upstream Jellystack documentation follows for attribution and historical
+context. Video Pro uses `com.dongpiandi.videopro`; mobile remains the upstream
+`app.jellystack.mobile` target.
 
 # Jellystack
 
@@ -42,14 +56,24 @@ See [Privacy](docs/privacy.md), [Permissions](docs/permissions.md), and the [Ger
 
 ## Build
 
-Requirements: JDK 17 and Android SDK API 36 (Xcode on macOS for the experimental iOS targets). Run Gradle from the repository root:
+Requirements: JDK 17 and Android SDK API 36 (Xcode on macOS for the experimental iOS targets).
+
+Build the authoritative TV application from its independent Gradle project:
+
+```powershell
+Set-Location .\frontend-tv
+.\gradlew.bat :app:assembleDebug
+```
+
+Run the KMP project from the repository root for mobile and the experimental
+TV migration:
 
 ```bash
 ./gradlew :app-android:assembleDebug
 ./gradlew :app-tv:assembleDebug
 ```
 
-See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries.
+See [Building](docs/building.md) for the full verification gate, tests, and screenshot workflow, and [Architecture](docs/architecture.md) for module boundaries. See [Versioning and releases](docs/versioning.md) before changing version fields, tagging, or publishing.
 
 The TV app uses a separate GMS-free application module while sharing Jellyfin, Seerr, settings, and playback logic with mobile. See [Android TV and Fire TV](docs/android-tv.md) for emulator setup, remote controls, builds, testing, and store submission.
 

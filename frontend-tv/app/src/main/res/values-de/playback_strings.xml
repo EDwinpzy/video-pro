@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_retry_sync">Erneut synchronisieren</string>
+    <string name="playback_http_unavailable">Die Quelle ist nicht verfügbar (HTTP %1$d). Aktualisierung und Ersatzquellen wurden versucht. Erneut versuchen oder eine andere Quelle wählen.</string>
+    <string name="playback_failure_options">Wiedergabe erneut versuchen oder eine andere Quelle wählen.</string>
+    <string name="playback_change_source">Quelle wechseln</string>
+</resources>

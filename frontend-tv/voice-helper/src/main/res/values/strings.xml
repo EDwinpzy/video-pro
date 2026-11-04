@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">全局语音助手</string>
+    <string name="accessibility_service_label">全局语音助手</string>
+    <string name="accessibility_service_description">输入框内使用原厂语音听写；没有输入框时打开原厂语音窗口并连接自定义大模型。</string>
+    <string name="dictation_permission_required">请先允许全局语音助手使用麦克风</string>
+    <string name="dictation_failed">没有听清，请重试</string>
+    <string name="dictation_timeout">语音输入超时，请重试</string>
+    <string name="dictation_engine_unavailable">当前设备无法加载原厂识别引擎</string>
+    <string name="microphone_channel_name">语音听写</string>
+    <string name="microphone_notification_title">正在使用原厂语音识别</string>
+    <string name="microphone_notification_description">松开遥控器语音键后文字会插入当前输入框</string>
+</resources>

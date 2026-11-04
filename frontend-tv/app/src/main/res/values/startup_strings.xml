@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="startup_failed">Could not finish loading. Check your connection and retry.</string>
+    <string name="startup_retry">Retry</string>
+</resources>

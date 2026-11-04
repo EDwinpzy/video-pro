@@ -1,0 +1,1405 @@
+package com.qiubo.optimaltv.ui.player
+
+import android.app.Activity
+import android.view.KeyEvent
+import android.view.WindowManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import com.qiubo.optimaltv.Graph
+import com.qiubo.optimaltv.data.model.formatTime
+import com.qiubo.optimaltv.data.prefs.DanmakuDisplayArea
+import com.qiubo.optimaltv.playback.EnginePlayState
+import com.qiubo.optimaltv.ui.components.AppleLoading
+import com.qiubo.optimaltv.ui.components.InitialFocusEffect
+import com.qiubo.optimaltv.ui.components.OtvHint
+import com.qiubo.optimaltv.ui.components.ProvideNavScrolls
+import com.qiubo.optimaltv.ui.components.RemotePoster
+import com.qiubo.optimaltv.ui.components.dpadFocusable
+import com.qiubo.optimaltv.ui.components.navSink
+import com.qiubo.optimaltv.ui.components.scrollNavContainer
+import com.qiubo.optimaltv.ui.components.tvReducedSemantics
+import com.qiubo.optimaltv.ui.components.NAV_DOWN
+import com.qiubo.optimaltv.ui.components.NAV_LEFT
+import com.qiubo.optimaltv.ui.components.NAV_RIGHT
+import com.qiubo.optimaltv.ui.components.NAV_UP
+import com.qiubo.optimaltv.ui.detail.simpleFactory
+import com.qiubo.optimaltv.ui.theme.AccentBlue
+import com.qiubo.optimaltv.ui.theme.OtvColors
+import com.qiubo.optimaltv.ui.theme.rememberUiScale
+import com.qiubo.optimaltv.ui.theme.sxs
+import com.qiubo.optimaltv.ui.theme.sx
+import com.qiubo.optimaltv.ui.theme.TextPrimary
+import java.net.URLDecoder
+import kotlinx.coroutines.launch
+
+/**
+ * 播放页（2026-08-28 复刻 tvOS 播放器，需求 影视#3 / 足球#13/14）：
+ * - 影视：OK 呼出菜单（标题+meta / 播放钮 / 进度条）；BACK 隐藏菜单；
+ *   菜单隐藏时两次返回退出（首次提示）；左右=±10s；菜单键 → 右侧悬浮栏（影片信息+选集+换源+倍速+画幅）
+ * - 足球直播（需求 足球#14）：无任何菜单、无比分板；唯一控件=信号源选择条
+ *   （OK/菜单键呼出，左右移动、OK 切换，BACK/5s 自动隐藏）；默认源=上次可用线路或服务端首条；
+ *   两次返回退出（首次提示）
+ * - KEEP_SCREEN_ON / 断点续播 / 看门狗换线（VM 承担）
+ */
+@Composable
+fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: Long = 0L) {
+    val vodId = URLDecoder.decode(vodIdArg, "UTF-8")
+    val vm: PlayerViewModel = viewModel(
+        key = "player:$vodId:$epIndex:$resumeMs",
+        factory = simpleFactory {
+            PlayerViewModel(vodId, epIndex, Graph.repo, Graph.db, Graph.settings, resumeStartMs = resumeMs)
+        },
+    )
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val mediaCategoryId = remember(vodId, ui.title, ui.sourceResolving) {
+        Graph.repo.itemById(vodId)?.categoryId.orEmpty()
+    }
+    val shortDramaEpisodeKeys = remember(vodId) { ShortDramaEpisodeKeyHandler() }
+
+    // KEEP_SCREEN_ON：投影仪防息屏
+    val activity = LocalContext.current as Activity
+    DisposableEffect(Unit) {
+        activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    // 后台暂停/回来自动恢复
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> vm.onHostPause()
+                Lifecycle.Event.ON_RESUME -> vm.onHostResume()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
+    var tick by remember { mutableIntStateOf(0) }   // 控制条/信号源条自动隐藏计时基准
+    LaunchedEffect(ui.controlsVisible, ui.panel, ui.srcPickerVisible, tick) {
+        if (ui.panel == Panel.NONE && ui.fatalMsg == null) {
+            kotlinx.coroutines.delay(5_000)
+            if (ui.srcPickerVisible) vm.hideSrcPicker()
+            else if (ui.controlsVisible) vm.hideControls()
+        }
+    }
+
+    // 返回语义（需求）：面板开 → 关面板；信号源条开（直播）→ 收起；菜单开 → 隐藏菜单；
+    // 菜单隐藏 → 2.5s 内两次返回退出（首次提示）
+    val backHint = remember { mutableStateOf<String?>(null) }
+    var lastBackAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(backHint.value) {
+        if (backHint.value != null) { kotlinx.coroutines.delay(2500); backHint.value = null }
+    }
+    fun onBackPressed() {
+        com.qiubo.optimaltv.OtvLog.i("player onBackPressed: panel=${ui.panel} src=${ui.srcPickerVisible} ctl=${ui.controlsVisible} fatal=${ui.fatalMsg != null} hint=${backHint.value != null}")
+        when {
+            ui.panel != Panel.NONE -> vm.setPanel(Panel.NONE)
+            ui.srcPickerVisible -> vm.hideSrcPicker()    // 直播：先收信号源条（需求 足球#14；错误态开条时 BACK 也先收条）
+            ui.fatalMsg != null -> nav.popBackStack()    // 错误兜底态：BACK 直接返回上一页
+            // v1.21 乱跑修复：收控制条的同时挂「再按退出」提示并入双击窗口——
+            // 原逻辑这击不算退出意图，进播放器（控制条短暂可见）后用户双 BACK
+            // 只会收条+挂提示，第三击才退（实测要按 4~6 次，黑屏期方向键死锁）
+            ui.controlsVisible -> {
+                vm.hideControls()
+                lastBackAt = android.os.SystemClock.uptimeMillis()
+                backHint.value = "再按一次返回键退出播放"
+            }
+            else -> {
+                // v1.19：交互计时改 uptimeMillis（墙钟跳变会误判双击窗口）
+                val now = android.os.SystemClock.uptimeMillis()
+                if (backHint.value != null || now - lastBackAt < 2500) nav.popBackStack()
+                else { lastBackAt = now; backHint.value = "再按一次返回键退出播放" }
+            }
+        }
+    }
+
+    // 根键宿：直播模式收起信号源条后焦点回落（OK 才能再次呼出）
+    // v1.13：navSink 注册隐藏节点——可持焦/可被引擎寻回，但不参与几何导航
+    // v1.21 光标乱跑修复（2026-09-06 黑盒复现）：控制层销毁后 Compose 焦点恢复会把
+    // 焦点甩到本全屏键宿上——它此前无 override，四向全 blocked（黑屏+方向键失灵
+    // 死锁现场）。补上与 keySink 同语义的方向 override：任意方向键唤出控制条，
+    // 焦点随即由 LaunchedEffect 落回中央播放钮，导航恢复正常。
+    val rootFocus = remember { FocusRequester() }
+    // 本页无标签栏：清空 topFocus，防 UP 到顶逃逸到已销毁屏的 tab 句柄
+    LaunchedEffect(Unit) { com.qiubo.optimaltv.ui.components.OtvNav.topFocus = null }
+    // 足球错误态使用非模态提示；焦点保持在全屏键宿，OK/方向键仍能打开信号源列表。
+    LaunchedEffect(ui.isLive, ui.fatalMsg, ui.srcPickerVisible) {
+        if (ui.isLive && ui.fatalMsg != null && !ui.srcPickerVisible) {
+            runCatching { rootFocus.requestFocus() }
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .tvReducedSemantics()
+            .onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                vm.onRemoteDirectionKey(native)
+                val episodeKey = shortDramaEpisodeKeys.handle(
+                    categoryId = mediaCategoryId,
+                    keyCode = native.keyCode,
+                    action = native.action,
+                    repeatCount = native.repeatCount,
+                    downTimeMs = native.downTime,
+                    currentEpisode = ui.epIndex,
+                    episodeCount = ui.epCount,
+                    controlsVisible = ui.controlsVisible,
+                    panelOpen = ui.panel != Panel.NONE,
+                    dialogOpen = ui.showExitDialog,
+                    isLive = ui.isLive,
+                    hasFatalError = ui.fatalMsg != null,
+                    switchingEpisode = ui.sourceResolving,
+                )
+                episodeKey.targetEpisode?.let { target ->
+                    vm.switchEpisode(target)
+                    tick++
+                }
+                episodeKey.consumed
+            }
+            .navSink(requester = rootFocus) { dir ->
+                when {
+                    ui.controlsVisible || ui.panel != Panel.NONE -> false
+                    ui.isLive -> {
+                        // 直播收起态：任意方向键呼信号源条（LiveSourcePicker 会把焦点
+                        // 落到当前源 chip，恢复真实导航）
+                        if (!ui.srcPickerVisible) vm.toggleSrcPicker()
+                        tick++; true
+                    }
+                    else -> {
+                        vm.showControls()
+                        if (dir == NAV_LEFT || dir == NAV_RIGHT) {
+                            vm.seekFromRemote(if (dir == NAV_LEFT) -PlaybackPolicy.SEEK_STEP_MS else PlaybackPolicy.SEEK_STEP_MS)
+                        }
+                        tick++; true
+                    }
+                }
+            }
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown || e.nativeKeyEvent.repeatCount != 0) {
+                    return@onPreviewKeyEvent false
+                }
+                val kc = e.nativeKeyEvent.keyCode
+                when (kc) {
+                    KeyEvent.KEYCODE_BACK -> { onBackPressed(); true }
+                    // 菜单键：影视=更多面板；直播=呼出/收起信号源选择条（需求 足球#14）。
+                    // 错误态也放行：当前线路解码失败时仍可手动切换其他线路
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { vm.togglePlay(); tick++; true }
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> { if (!ui.isPlaying) vm.togglePlay(); tick++; true }
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> { if (ui.isPlaying) vm.togglePlay(); tick++; true }
+                    KeyEvent.KEYCODE_MENU -> {
+                        if (ui.isLive) {
+                            vm.toggleSrcPicker()
+                        } else {
+                            vm.setPanel(Panel.MORE)
+                        }
+                        tick++; true
+                    }
+                    // 直播：OK 呼出信号源条（条已开时不拦截——交给聚焦 chip 完成切源）
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        if (ui.isLive && !ui.srcPickerVisible) {
+                            vm.toggleSrcPicker(); tick++; true
+                        } else false
+                    }
+                    else -> false
+                }
+            },
+    ) {
+        // 直播视频层始终使用整个可视区域；影视继续遵循用户设置的画幅模式。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(if (ui.isLive) Modifier else aspectConstraint(ui.aspectOrdinal)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (vm.hasEngine()) {
+                // key=engineEpoch（引擎实例代数，2026-09-21 黑屏只剩声音修复）：
+                // AndroidView factory 只跑一次，任何「换引擎实例」都必须换 key。旧版按
+                // engineId 取 key，同类型重建（卡顿阶梯 RECREATE_ENGINE、直播 30s 自动
+                // 重试、错误态手动重试）时 key 不变 → 视图树继续挂着已 release 的旧
+                // PlayerView，新引擎的渲染面从未挂进窗口 ⇒ 整屏全黑、声音照常。
+                // 口径与 TvScreen 视频层、移动版 PlayerScreen 统一。
+                key(ui.engineEpoch) {
+                    AndroidView(
+                        factory = {
+                            val v = vm.engine.renderView
+                            // 同一渲染面若仍挂在旧容器上，先摘下来再交给新的 AndroidView
+                            (v.parent as? android.view.ViewGroup)?.removeView(v)
+                            v
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            if (!ui.isLive &&
+                ui.danmakuEnabled &&
+                ui.danmakuAvailable &&
+                ui.danmakuItems.isNotEmpty() &&
+                ui.fatalMsg == null
+            ) {
+                DanmakuOverlay(
+                    items = ui.danmakuItems,
+                    positionMs = ui.positionMs,
+                    playbackRate = ui.speed,
+                    isPlaying = ui.isPlaying,
+                    displayArea = ui.danmakuDisplayArea,
+                    fontScale = ui.danmakuFontScale,
+                    opacity = ui.danmakuOpacity,
+                    scrollSpeed = ui.danmakuScrollSpeed,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        // 影院 scrim（控制条可见或未起播时淡入）
+        AnimatedVisibility(
+            visible = !ui.isLive && (ui.controlsVisible || (ui.playState == EnginePlayState.IDLE && ui.fatalMsg == null)),
+            modifier = Modifier.fillMaxSize(),
+            enter =
+                if (com.qiubo.optimaltv.TvPerformanceProfile.navigationMotionEnabled) {
+                    fadeIn(tween(450))
+                } else {
+                    EnterTransition.None
+                },
+            exit =
+                if (com.qiubo.optimaltv.TvPerformanceProfile.navigationMotionEnabled) {
+                    fadeOut(tween(450))
+                } else {
+                    ExitTransition.None
+                },
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val density = LocalDensity.current
+                    val w = with(density) { maxWidth.toPx() }
+                    val h = with(density) { maxHeight.toPx() }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (com.qiubo.optimaltv.TvPerformanceProfile.isConstrained) {
+                                    Modifier.background(Color(0x33000000))
+                                } else {
+                                    Modifier.background(
+                                        Brush.radialGradient(
+                                            colors = listOf(Color(0x33000000), Color.Transparent),
+                                            center = Offset(w / 2f, h * 0.35f),
+                                            radius = maxOf(w, h) * 0.75f,
+                                        ),
+                                    )
+                                },
+                            ),
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.3f)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                0.55f to Color(0x66000000),
+                                1f to Color(0xCC000000),
+                            ),
+                        ),
+                )
+            }
+        }
+
+        // 缓冲指示
+        if (ui.isLive && ui.sourceResolving && ui.lines.isEmpty()) {
+            Text(
+                "正在检测可用线路…",
+                color = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        if (ui.fatalMsg == null &&
+            (ui.sourceResolving || ui.playState == EnginePlayState.BUFFERING ||
+                (ui.playState == EnginePlayState.READY && ui.isPlaying && !ui.firstFrameRendered))
+        ) {
+            AppleLoading(modifier = Modifier.align(Alignment.Center), size = 56.dp)
+        }
+
+        // 错误兜底（防线三）
+        ui.fatalMsg?.let { msg ->
+            if (ui.isLive) {
+                LivePlaybackFailureHint(msg, Modifier.align(Alignment.TopCenter))
+            } else if (ui.panel == Panel.NONE) {
+                val errorFocus = remember { FocusRequester() }
+                InitialFocusEffect(errorFocus, "error-retry")
+                ErrorWidget(
+                    message = msg,
+                    onRetry = { vm.retry() },
+                    onChangeSource = { vm.setPanel(Panel.MORE) },
+                    onBack = { nav.popBackStack() },
+                    focusRequester = errorFocus,
+                )
+            }
+        }
+
+        val ps = rememberUiScale()
+        val centerPlayFocus = remember { FocusRequester() }
+        val scrubFocus = remember { FocusRequester() }
+        if (ui.isLive) {
+            // ---- 足球直播（需求 足球#14）：无任何菜单、无比分板；唯一控件=信号源选择条 ----
+            LiveSourcePicker(ui, vm, Modifier.align(Alignment.BottomCenter), onTick = { tick++ }, rootFocus = rootFocus)
+        } else {
+            // ---- 影视：tvOS 播放器（需求 影视#3）----
+            VodPlayerOverlay(
+                ui = ui,
+                vm = vm,
+                onTick = { tick++ },
+                onBack = ::onBackPressed,
+                centerPlayFocus = centerPlayFocus,
+                scrubFocus = scrubFocus,
+            )
+        }
+
+        /* ⑭（2026-09-08）：TV 版投屏功能整体移除——v1.21 投屏入口胶囊与设备浮层删除
+           （移动版保留；共享层 PlayerViewModel 的 DLNA 逻辑因双端同源不动，TV 侧无任何入口触达） */
+
+        // 面板：更多（影片信息 + 选集/播放设置/片源三页）
+        if (ui.panel == Panel.MORE) {
+            ClassicMorePanel(
+                ui = ui,
+                vm = vm,
+                // v1.19：VM 内直切换集（不走路由堆叠 VM/引擎实例，见 switchEpisode）
+                onPickEpisode = { i ->
+                    vm.switchEpisode(i)
+                },
+            )
+        }
+
+        // BACK 分层处理
+        BackHandler { onBackPressed() }
+
+        // 返回提示（需求 足球#5；需求 影视#3：统一贴屏幕最下方，组件内自带贴底边距）
+        OtvHint(backHint.value)
+    }
+}
+
+/** 播放器浮窗导航分组（需求 影视#1）：浮窗内控件归组，引擎只在本组内几何移动、绝不逃逸 */
+private const val PANEL_NAV_GROUP = "player-panel"
+
+/** 控制条播放钮与进度条独立分组：seek 语义之外的方向一律封锁 */
+private const val CTL_NAV_GROUP = "player-ctl"
+
+/**
+ * 直播信号源选择条（需求 足球#14：直播播放器唯一控件）：
+ * OK/菜单键呼出 → 焦点落当前源；左右移动、OK 切源（即时换线）；BACK 或 5s 无操作隐藏。
+ * 默认源 = 上次仍可用的线路，否则使用服务端返回的首条线路。
+ */
+@Composable
+private fun LiveSourcePicker(
+    ui: PlayerUiState,
+    vm: PlayerViewModel,
+    modifier: Modifier,
+    onTick: () -> Unit,
+    rootFocus: FocusRequester,
+) {
+    val ps = rememberUiScale()
+    // 呼出时焦点落「当前源」chip（重试可能重建线路表，按 lines 重建句柄）
+    val chipFocus = remember(ui.lines) { List(ui.lines.size) { FocusRequester() } }
+    val retryFocus = remember(ui.lines) { FocusRequester() }
+    LaunchedEffect(ui.srcPickerVisible, ui.activeLine, ui.lines, ui.sourceResolving) {
+        if (!ui.srcPickerVisible) return@LaunchedEffect
+        if (ui.lines.isEmpty()) {
+            if (ui.sourceResolving) {
+                runCatching { rootFocus.requestFocus() }
+                return@LaunchedEffect
+            }
+            repeat(20) {
+                try { retryFocus.requestFocus(); return@LaunchedEffect } catch (_: IllegalStateException) {
+                    kotlinx.coroutines.delay(50)
+                }
+            }
+            return@LaunchedEffect
+        }
+        repeat(20) {
+            val fr = chipFocus.getOrNull(ui.activeLine) ?: return@LaunchedEffect
+            try { fr.requestFocus(); return@LaunchedEffect } catch (_: IllegalStateException) {
+                kotlinx.coroutines.delay(50)
+            }
+        }
+    }
+    // 收起（BACK/超时/切面板）后焦点回根键宿，OK 可再次呼出
+    LaunchedEffect(ui.srcPickerVisible) {
+        if (!ui.srcPickerVisible) runCatching { rootFocus.requestFocus() }
+    }
+    if (!ui.srcPickerVisible) return
+
+    Column(
+        modifier
+            .padding(bottom = 56f.sx(ps))
+            .background(Color(0xB3111114), RoundedCornerShape(20f.sx(ps)))
+            .padding(horizontal = 26f.sx(ps), vertical = 20f.sx(ps)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "信号源",
+            color = Color(0x99FFFFFF), fontSize = 20f.sxs(ps),
+            modifier = Modifier.padding(bottom = 12f.sx(ps)),
+        )
+        if (ui.lines.isEmpty()) {
+            if (ui.sourceResolving) {
+                Text("正在检测可用线路…", color = Color.White, fontSize = 20f.sxs(ps))
+            } else {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .focusRequester(retryFocus)
+                        .dpadFocusable(scaleFocused = 1.05f, focusedBg = Color.White, drawRing = false) {
+                            vm.retry(); onTick()
+                        }
+                        .background(Color(0x59FFFFFF), RoundedCornerShape(12f.sx(ps)))
+                        .padding(horizontal = 24f.sx(ps), vertical = 12f.sx(ps)),
+                ) {
+                    Text("重新检测线路", color = Color.White, fontSize = 25f.sxs(ps), fontWeight = FontWeight.Bold)
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(14f.sx(ps))) {
+                ui.lines.forEachIndexed { idx, line ->
+                    val active = idx == ui.activeLine
+                    var chipFocused by remember { mutableStateOf(false) }
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .then(if (active) Modifier.focusRequester(chipFocus[idx]) else Modifier)
+                            .dpadFocusable(
+                                scaleFocused = 1.05f,
+                                focusedBg = Color.White,
+                                // 播放器控件不画描边环（需求 影视#7 同款约定）
+                                drawRing = false,
+                                onFocusedChange = {
+                                    chipFocused = it
+                                    if (it) onTick()   // 浏览中不触发 5s 自动隐藏
+                                },
+                            ) { vm.switchLine(idx); onTick() }
+                            .background(
+                                if (active) Color(0x59FFFFFF) else Color(0x24FFFFFF),
+                                RoundedCornerShape(12f.sx(ps)),
+                            )
+                            .padding(horizontal = 24f.sx(ps), vertical = 12f.sx(ps)),
+                    ) {
+                        Text(
+                            line.label,
+                            color = if (active || chipFocused) OtvColors.Bg else Color.White,
+                            fontSize = 25f.sxs(ps),
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * tvOS 风格影视播放器浮层（参考截图 1:1）：
+ * 标题+meta 左上 / 播放暂停 / 底部进度条（已播-轨道-剩余）。
+ * 菜单隐藏时根级 OK/上下唤出、左右 ±30s；菜单键仍可打开更多侧栏。
+ */
+@Composable
+private fun VodPlayerOverlay(
+    ui: PlayerUiState,
+    vm: PlayerViewModel,
+    onTick: () -> Unit,
+    onBack: () -> Unit,
+    centerPlayFocus: FocusRequester,
+    scrubFocus: FocusRequester,
+) {
+    val keySink = remember { FocusRequester() }
+    InitialFocusEffect(keySink, "player-sink")
+
+    // 控制条出现：焦点落中央播放钮；隐藏：焦点回键宿
+    LaunchedEffect(ui.controlsVisible, ui.panel, ui.fatalMsg) {
+        if (ui.fatalMsg != null) return@LaunchedEffect
+        if (ui.controlsVisible && ui.panel == Panel.NONE) {
+            repeat(20) {
+                try { centerPlayFocus.requestFocus(); return@LaunchedEffect } catch (_: IllegalStateException) {
+                    kotlinx.coroutines.delay(50)
+                }
+            }
+        } else if (!ui.controlsVisible && ui.panel == Panel.NONE) {
+            runCatching { keySink.requestFocus() }
+        }
+    }
+
+    /** 控制条隐藏态的方向键处理（引擎 override 通道；OK/数字键仍走 Compose 事件） */
+    fun consumeDirKey(dir: Int): Boolean {
+        when (dir) {
+            com.qiubo.optimaltv.ui.components.NAV_LEFT, com.qiubo.optimaltv.ui.components.NAV_RIGHT -> {
+                // 需求 影视#8：菜单隐藏时左右快进自动弹出菜单栏
+                if (!ui.controlsVisible) vm.showControls()
+                vm.seekFromRemote(if (dir == com.qiubo.optimaltv.ui.components.NAV_LEFT) -PlaybackPolicy.SEEK_STEP_MS else PlaybackPolicy.SEEK_STEP_MS)
+                onTick(); return true
+            }
+            com.qiubo.optimaltv.ui.components.NAV_UP, com.qiubo.optimaltv.ui.components.NAV_DOWN -> {
+                vm.toggleControls(); return true
+            }
+        }
+        return false
+    }
+
+    /** 控制条隐藏态的根级按键处理（Compose 事件通道：OK/数字） */
+    fun consumeKey(keyCode: Int): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { vm.toggleControls(); return true }
+            in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> { vm.inputDigit(keyCode - KeyEvent.KEYCODE_0); return true }
+        }
+        return false
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        // 隐形键宿：菜单隐藏时持有焦点，保证 OK/左右/数字响应
+        Box(
+            Modifier
+                .size(1.dp)
+                .navSink(
+                    requester = keySink,
+                    override = { dir ->
+                        if (ui.controlsVisible || ui.panel != Panel.NONE) false else consumeDirKey(dir)
+                    },
+                )
+                .onPreviewKeyEvent { e ->
+                    if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    if (ui.controlsVisible || ui.panel != Panel.NONE) return@onPreviewKeyEvent false
+                    consumeKey(e.nativeKeyEvent.keyCode)
+                },
+        )
+
+        val ps = rememberUiScale()
+        val posMs = ui.positionMs
+        val durMs = ui.durationMs
+        if (ui.controlsVisible && ui.fatalMsg == null) {
+            // 底部：标题+meta（需求 影视#4：从左上角移到控制条上方）→ 进度行（播放暂停钮 - 已播 - 轨道 - 剩余）
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 80f.sx(ps), vertical = 40f.sx(ps)),
+            ) {
+                // 标题 + meta（tvOS：需求 影视#9 字号缩小；多集时标题带当前集数）
+                val displayTitle = if (ui.epCount > 1) "${ui.title} 第${ui.epIndex + 1}集" else ui.title
+                Text(
+                    displayTitle.ifBlank { "正在播放" },
+                    color = OtvColors.White, fontSize = 52f.sxs(ps), fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = if (com.qiubo.optimaltv.TvPerformanceProfile.isConstrained) {
+                        LocalTextStyle.current
+                    } else {
+                        with(LocalDensity.current) {
+                            LocalTextStyle.current.copy(
+                                shadow = Shadow(color = Color(0x80000000), blurRadius = 24f.sx(ps).toPx(), offset = Offset(0f, 4f.sx(ps).toPx())),
+                            )
+                        }
+                    },
+                )
+                if (ui.meta.isNotBlank()) {
+                    Spacer(Modifier.height(10f.sx(ps)))
+                    Text(
+                        ui.meta, color = OtvColors.White.copy(alpha = 0.85f), fontSize = 23f.sxs(ps),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(26f.sx(ps)))
+                var scrubFocused by remember { mutableStateOf(false) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // 播放/暂停（进度条前面）：唤起菜单自动聚焦此钮（需求 影视#6）
+                    // 需求 影视#3：按钮缩小（64→30dp），与右侧进度条视觉高度相当
+                    Box {
+                        CircleButtonBase(
+                            size = 30.dp,
+                            focusRequester = centerPlayFocus,
+                            navGroup = CTL_NAV_GROUP,
+                            navOverride = { dir ->
+                                when (dir) {
+                                    com.qiubo.optimaltv.ui.components.NAV_LEFT -> { vm.seekFromRemote(-PlaybackPolicy.SEEK_STEP_MS); onTick(); true }
+                                    com.qiubo.optimaltv.ui.components.NAV_RIGHT -> { vm.seekFromRemote(PlaybackPolicy.SEEK_STEP_MS); onTick(); true }
+                                    com.qiubo.optimaltv.ui.components.NAV_UP -> { vm.hideControls(); onTick(); true }
+                                    else -> false
+                                }
+                            },
+                            onClick = { vm.togglePlay() },
+                        ) { on ->
+                            PlayPauseIcon(playing = ui.isPlaying, iconColor = on, iconSize = 13.dp)
+                        }
+                    }
+                    Spacer(Modifier.width(24f.sx(ps)))
+                    Text(formatTime(posMs), color = Color(0xE6FFFFFF), fontSize = 24f.sxs(ps), fontWeight = FontWeight.SemiBold)
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .padding(horizontal = 28.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .focusRequester(scrubFocus)
+                                .dpadFocusable(
+                                    scaleFocused = 1f,
+                                    focusedBg = Color.Transparent,
+                                    // 需求 影视#7：进度条聚焦不画描边环，聚焦态用加粗轨道+放大圆点表达
+                                    drawRing = false,
+                                    onFocusedChange = { scrubFocused = it },
+                                    navGroup = CTL_NAV_GROUP,
+                                    navOverride = { dir ->
+                                        when (dir) {
+                                            com.qiubo.optimaltv.ui.components.NAV_LEFT -> { vm.seekFromRemote(-PlaybackPolicy.SEEK_STEP_MS); onTick(); true }
+                                            com.qiubo.optimaltv.ui.components.NAV_RIGHT -> { vm.seekFromRemote(PlaybackPolicy.SEEK_STEP_MS); onTick(); true }
+                                            com.qiubo.optimaltv.ui.components.NAV_UP -> { vm.hideControls(); onTick(); true }
+                                            else -> false
+                                        }
+                                    },
+                                ) { vm.togglePlay() }
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(if (scrubFocused) 10.dp else 6.dp)
+                                    .background(
+                                        if (scrubFocused) Color(0x59FFFFFF) else Color(0x4DFFFFFF),
+                                        RoundedCornerShape(5.dp),
+                                    ),
+                            ) {
+                                val frac = if (durMs > 0) posMs.toFloat() / durMs else 0f
+                                Box(
+                                    Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(frac.coerceIn(0.005f, 1f)),
+                                ) {
+                                    Box(Modifier.fillMaxSize().background(Color.White, RoundedCornerShape(5.dp)))
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .size(if (scrubFocused) 22.dp else 14.dp)
+                                            .background(Color.White, CircleShape),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        "-" + formatTime((durMs - posMs).coerceAtLeast(0)),
+                        color = Color(0xE6FFFFFF), fontSize = 24f.sxs(ps), fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        } else if (ui.playState == EnginePlayState.IDLE && ui.fatalMsg == null) {
+            // 未起播态：仅中央大播放钮
+            Box(Modifier.align(Alignment.Center)) {
+                CircleButtonBase(size = 96.dp, onClick = { vm.togglePlay() }) { on ->
+                    PlayPauseIcon(playing = true, iconColor = on, iconSize = 40.dp)
+                }
+            }
+        }
+    }
+}
+
+/** Main sidebar with source groups and lines below episodes and speed. */
+@Composable
+internal fun MorePanel(
+    ui: PlayerUiState,
+    vm: PlayerViewModel,
+    onPickEpisode: (Int) -> Unit,
+) {
+    val pageSize = EpisodeMenuPolicy.RANGE_SIZE
+    val activePage = ui.epIndex / pageSize
+    var page by remember { mutableIntStateOf(activePage) }
+    LaunchedEffect(activePage) { page = activePage }
+    val episodeRows = if (!ui.isMovie && ui.epCount > 1) {
+        EpisodeMenuPolicy.visibleRange(ui.epCount, page).toList().chunked(5)
+    } else emptyList()
+    val hasRanges = episodeRows.isNotEmpty() && EpisodeMenuPolicy.hasRanges(ui.epCount)
+    val pageCount = (ui.epCount + pageSize - 1) / pageSize
+    val episodeStartRow = if (hasRanges) 1 else 0
+    val settingsStartRow = episodeStartRow + episodeRows.size
+    val playbackSpeedRow = settingsStartRow + 5
+    val panelFocus = rememberPlayerPanelFocus(
+        (if (hasRanges) listOf(pageCount) else emptyList()) + episodeRows.map { it.size } +
+            listOf(1, DanmakuDisplayArea.menuEntries.size, 3, 4, PlayerViewModel.DANMAKU_SCROLL_SPEED_STEPS.size,
+                PlayerViewModel.SPEED_STEPS.size),
+    )
+    val initialSpeed = remember {
+        PlayerViewModel.SPEED_STEPS.indexOfFirst { kotlin.math.abs(it - ui.speed) < 0.01f }.coerceAtLeast(0)
+    }
+    LaunchedEffect(panelFocus) { panelFocus.focusInitial(playbackSpeedRow, initialSpeed) }
+    val panelScroll = rememberScrollState()
+    val panelNav = remember(panelScroll) { scrollNavContainer(panelScroll) }
+    Box(Modifier.fillMaxSize().consumePlayerPanelKeysWhileMoving(panelFocus)) {
+        Box(Modifier.fillMaxSize().background(Color(0x66000000)))
+        ProvideNavScrolls(vertical = panelNav) {
+            Column(
+                Modifier.align(Alignment.CenterEnd).width(560.dp).fillMaxHeight()
+                    .background(Color(0xE9121216), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
+                    .verticalScroll(panelScroll).padding(horizontal = 28.dp, vertical = 24.dp),
+            ) {
+                Row(verticalAlignment = Alignment.Top) {
+                    if (ui.posterUrl.isNotBlank()) {
+                        val density = LocalDensity.current
+                        val panelPosterWidthPx =
+                            remember(density) {
+                                with(density) {
+                                    72.dp.roundToPx() * 2
+                                }
+                            }
+                        RemotePoster(
+                            url = ui.posterUrl,
+                            title = ui.title,
+                            seed = ui.title.hashCode(),
+                            modifier = Modifier.width(72.dp).height(100.dp).clip(RoundedCornerShape(10.dp)),
+                            requestWidthPx = panelPosterWidthPx,
+                        )
+                        Spacer(Modifier.width(16.dp))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(ui.title.ifBlank { "影片" }, color = TextPrimary,
+                            style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (ui.meta.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(ui.meta, color = TextPrimary.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                if (ui.desc.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(ui.desc, color = TextPrimary.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (!ui.isMovie && ui.epCount > 1) {
+                    Spacer(Modifier.height(12.dp))
+                    SectionLabel("选集")
+                    if (hasRanges) {
+                        val rangeScroll = rememberScrollState()
+                        ProvideNavScrolls(horizontal = remember(rangeScroll) { scrollNavContainer(rangeScroll) }) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rangeScroll), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (p in 0 until pageCount) {
+                                    val from = p * pageSize + 1
+                                    val to = minOf((p + 1) * pageSize, ui.epCount)
+                                    PlayerPanelChip("第$from-${to}集", p == page,
+                                        panelFocus.modifier(0, p), focus = panelFocus, focusRow = 0, focusColumn = p) { page = p }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    // Non-lazy rows keep every episode focusable in the panel scroll container.
+                    // Reserve five equal slots so incomplete rows retain the same chip width.
+                    episodeRows.forEachIndexed { rowIndex, row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEachIndexed { column, index ->
+                                val focusRow = episodeStartRow + rowIndex
+                                PlayerPanelChip(EpisodeMenuPolicy.episodeLabel(index), index == ui.epIndex,
+                                    Modifier.weight(1f).then(panelFocus.modifier(focusRow, column)),
+                                    focus = panelFocus, focusRow = focusRow, focusColumn = column) { onPickEpisode(index) }
+                            }
+                            repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                DanmakuSettingsSection(ui, vm, panelFocus, settingsStartRow)
+                Spacer(Modifier.height(10.dp))
+                SectionLabel("倍速")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PlayerViewModel.SPEED_STEPS.forEachIndexed { column, speed ->
+                        PlayerPanelChip("${speed}x", kotlin.math.abs(speed - ui.speed) < 0.01f,
+                            Modifier.weight(1f).then(panelFocus.modifier(playbackSpeedRow, column)),
+                            compact = true, focus = panelFocus, focusRow = playbackSpeedRow, focusColumn = column) {
+                            vm.setSpeed(speed)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                PlayerSourceSection(ui, vm)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DanmakuSettingsSection(
+    ui: PlayerUiState, vm: PlayerViewModel, focus: PlayerPanelFocus, startRow: Int,
+) {
+    val displayAreas = DanmakuDisplayArea.menuEntries
+    SectionLabel("弹幕")
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlayerPanelChip(
+            label = if (ui.danmakuEnabled) "弹幕已开启" else "弹幕已关闭",
+            active = ui.danmakuEnabled,
+            modifier = focus.modifier(startRow, 0),
+            focus = focus, focusRow = startRow,
+        ) { vm.toggleDanmaku() }
+        Text(
+            text =
+                when {
+                    ui.danmakuLoading -> "正在加载当前集弹幕…"
+                    ui.danmakuStatus.isNotBlank() -> ui.danmakuStatus
+                    ui.danmakuAvailable -> "已加载 ${ui.danmakuItems.size} 条"
+                    else -> "当前集暂无弹幕"
+                },
+            color = TextPrimary.copy(alpha = 0.62f),
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    PlayerOptionRow(
+        title = "显示区域",
+        focus = focus, focusRow = startRow + 1,
+        options = displayAreas.map { it.label },
+        selectedIndex = displayAreas.indexOf(ui.danmakuDisplayArea).coerceAtLeast(0),
+    ) { index ->
+        vm.setDanmakuDisplayArea(displayAreas[index])
+    }
+    Spacer(Modifier.height(6.dp))
+    PlayerOptionRow(
+        title = "字号",
+        focus = focus, focusRow = startRow + 2,
+        options = listOf("小", "标准", "大"),
+        selectedIndex =
+            PlayerViewModel.DANMAKU_FONT_SCALE_STEPS.indexOfFirst {
+                kotlin.math.abs(it - ui.danmakuFontScale) < 0.01f
+            }.coerceAtLeast(0),
+    ) { index ->
+        vm.setDanmakuFontScale(PlayerViewModel.DANMAKU_FONT_SCALE_STEPS[index])
+    }
+    Spacer(Modifier.height(6.dp))
+    PlayerOptionRow(
+        title = "不透明度",
+        focus = focus, focusRow = startRow + 3,
+        options = listOf("40%", "60%", "80%", "100%"),
+        selectedIndex =
+            PlayerViewModel.DANMAKU_OPACITY_STEPS.indexOfFirst {
+                kotlin.math.abs(it - ui.danmakuOpacity) < 0.01f
+            }.coerceAtLeast(0),
+    ) { index ->
+        vm.setDanmakuOpacity(PlayerViewModel.DANMAKU_OPACITY_STEPS[index])
+    }
+    Spacer(Modifier.height(6.dp))
+    PlayerOptionRow(
+        title = "速度",
+        focus = focus, focusRow = startRow + 4,
+        options = listOf("0.5x", "0.75x", "1.0x", "1.5x", "2.0x"),
+        selectedIndex =
+            PlayerViewModel.DANMAKU_SCROLL_SPEED_STEPS.indexOfFirst {
+                kotlin.math.abs(it - ui.danmakuScrollSpeed) < 0.01f
+            }.coerceAtLeast(0),
+    ) { index ->
+        vm.setDanmakuScrollSpeed(PlayerViewModel.DANMAKU_SCROLL_SPEED_STEPS[index])
+    }
+}
+
+@Composable
+private fun PlayerOptionRow(
+    title: String,
+    options: List<String>,
+    selectedIndex: Int,
+    focus: PlayerPanelFocus,
+    focusRow: Int,
+    onSelect: (Int) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            color = TextPrimary.copy(alpha = 0.68f),
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            modifier = Modifier.width(64.dp),
+        )
+        options.forEachIndexed { index, label ->
+            PlayerPanelChip(
+                label = label,
+                active = index == selectedIndex,
+                modifier = Modifier.weight(1f).then(focus.modifier(focusRow, index)),
+                compact = true,
+                focus = focus, focusRow = focusRow, focusColumn = index,
+            ) { onSelect(index) }
+        }
+    }
+}
+
+private fun playerSourceStatus(ui: PlayerUiState): String = when {
+    ui.lines.isEmpty() && ui.sourceResolving -> "正在查找片源…"
+    ui.lines.isEmpty() -> ui.fatalMsg ?: "暂无可用信号源"
+    ui.fatalMsg != null -> "当前线路无法播放，可手动换源"
+    else -> "当前播放：${ui.lines.getOrNull(ui.activeLine)?.label.orEmpty()}"
+}
+
+@Composable
+private fun PlayerPanelChip(
+    label: String, active: Boolean, modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    focus: PlayerPanelFocus? = null,
+    focusRow: Int = 0,
+    focusColumn: Int = 0,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier.then(if (focus != null) Modifier.testTag("player-panel-$focusRow-$focusColumn") else Modifier)
+            .background(if (active) AccentBlue else Color(0x24FFFFFF), RoundedCornerShape(10.dp))
+            .dpadFocusable(navGroup = PANEL_NAV_GROUP, scaleFocused = 1.02f,
+                externalFocusRequester = focus?.requester(focusRow, focusColumn),
+                navOverride = focus?.let { navigator -> { direction -> navigator.navigate(focusRow, focusColumn, direction) } },
+                onClick = {
+                    focus?.activate(focusRow, focusColumn, onClick) ?: onClick()
+                })
+            .padding(horizontal = if (compact) 3.dp else 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun PlayerSourceSection(ui: PlayerUiState, vm: PlayerViewModel) {
+    val groups = remember(ui.lines) {
+        PlayerSourceGroupingPolicy.groups(ui.lines)
+    }
+    val activeProvider = groups.firstOrNull { ui.activeLine in it.lineIndices }?.provider
+    var provider by remember(ui.title) { mutableStateOf(activeProvider ?: groups.firstOrNull()?.provider) }
+    LaunchedEffect(groups) {
+        if (groups.none { it.provider == provider }) provider = activeProvider ?: groups.firstOrNull()?.provider
+    }
+    val selected = groups.firstOrNull { it.provider == provider } ?: groups.firstOrNull()
+    SectionLabel("信号源选择")
+    Text(playerSourceStatus(ui), color = TextPrimary.copy(alpha = 0.65f),
+        style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Spacer(Modifier.height(12.dp))
+    if (groups.isNotEmpty()) {
+        val tabScroll = rememberScrollState()
+        ProvideNavScrolls(horizontal = remember(tabScroll) { scrollNavContainer(tabScroll) }) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(tabScroll), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                groups.forEach { group ->
+                    PlayerPanelChip(group.provider, group.provider == selected?.provider) { provider = group.provider }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        // Keep provider tabs outside the fixed viewport. Explicit adjacent focus moves
+        // prevent UP from jumping back to the tabs while earlier lines are offscreen.
+        key(selected?.provider) {
+            val indices = selected?.lineIndices.orEmpty()
+            val lineScroll = rememberScrollState()
+            val lineNav = remember(lineScroll) { scrollNavContainer(lineScroll) }
+            val scope = rememberCoroutineScope()
+            val sourceRequesters = remember(indices) { indices.map { FocusRequester() } }
+            val testRequesters = remember(indices) { indices.map { FocusRequester() } }
+            val revealers = remember(indices) { indices.map { BringIntoViewRequester() } }
+            ProvideNavScrolls(vertical = lineNav) {
+                Column(
+                    Modifier.fillMaxWidth().height(252.dp).verticalScroll(lineScroll).padding(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    indices.forEachIndexed { position, index ->
+                        val line = ui.lines[index]
+                        val active = index == ui.activeLine
+                        Row(
+                            Modifier.fillMaxWidth().height(56.dp)
+                                .bringIntoViewRequester(revealers[position])
+                                .background(if (active) AccentBlue else Color(0x24FFFFFF), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight()
+                                    .focusRequester(sourceRequesters[position])
+                                    .dpadFocusable(navGroup = PANEL_NAV_GROUP, scaleFocused = 1.02f,
+                                        navOverride = { direction ->
+                                            when {
+                                                direction == NAV_RIGHT -> {
+                                                    scope.launch { testRequesters[position].requestFocus() }
+                                                    true
+                                                }
+                                                direction == NAV_UP || direction == NAV_DOWN -> {
+                                                    val next = if (direction == NAV_UP) position - 1 else position + 1
+                                                    if (next in indices.indices) {
+                                                        scope.launch {
+                                                            revealers[next].bringIntoView()
+                                                            sourceRequesters[next].requestFocus()
+                                                        }
+                                                        true
+                                                    } else false
+                                                }
+                                                else -> false
+                                            }
+                                        }) { vm.switchLine(index) },
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp)) {
+                                    Text(line.label, color = Color.White, style = MaterialTheme.typography.labelLarge,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    if (active) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(if (ui.fatalMsg != null) "播放失败" else if (ui.sourceResolving || ui.playState == EnginePlayState.BUFFERING) "加载中" else "正在播放",
+                                            color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                            Box(
+                                Modifier.width(66.dp).fillMaxHeight()
+                                    .focusRequester(testRequesters[position])
+                                    .dpadFocusable(navGroup = PANEL_NAV_GROUP, scaleFocused = 1.02f,
+                                        navOverride = { direction ->
+                                            when {
+                                                direction == NAV_LEFT -> {
+                                                    scope.launch { sourceRequesters[position].requestFocus() }
+                                                    true
+                                                }
+                                                direction == NAV_UP || direction == NAV_DOWN -> {
+                                                    val next = if (direction == NAV_UP) position - 1 else position + 1
+                                                    if (next in indices.indices) {
+                                                        scope.launch {
+                                                            revealers[next].bringIntoView()
+                                                            testRequesters[next].requestFocus()
+                                                        }
+                                                        true
+                                                    } else false
+                                                }
+                                                else -> false
+                                            }
+                                        }) { vm.testLineSpeed(index) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("测速", color = Color.White, style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1)
+                            }
+                            Text(
+                                LineSpeedTestPolicy.resultText(ui.lineSpeedTests[LineSpeedTestPolicy.key(line)]),
+                                color = when {
+                                    ui.lineSpeedTests[LineSpeedTestPolicy.key(line)]?.isTesting == true -> TextPrimary.copy(alpha = 0.7f)
+                                    ui.lineSpeedTests[LineSpeedTestPolicy.key(line)]?.failed == true -> Color(0xFFFF8A80)
+                                    ui.lineSpeedTests[LineSpeedTestPolicy.key(line)]?.latencyMs != null -> Color(0xFF8FE3AD)
+                                    else -> TextPrimary.copy(alpha = 0.5f)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                modifier = Modifier.widthIn(min = 48.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text, color = TextPrimary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 6.dp),
+    )
+}
+
+/** 毛玻璃圆形按钮基座（聚焦纯白底 + 图标反黑 + 放大 1.1） */
+@Composable
+private fun CircleButtonBase(
+    size: Dp = 56.dp,
+    focusRequester: FocusRequester? = null,
+    navGroup: String? = null,
+    navOverride: ((Int) -> Boolean)? = null,
+    onClick: () -> Unit,
+    content: @Composable (iconColor: Color) -> Unit,
+) {
+    var btnFocused by remember { mutableStateOf(false) }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .size(size)
+            // 深色毛玻璃底先绘制，dpadFocusable 再在其上绘制聚焦白底，避免高亮被覆盖
+            .background(Color(0x66141414), CircleShape)
+            .dpadFocusable(
+                scaleFocused = 1.1f,
+                focusedBg = Color.White,
+                focusedBgRadius = size / 2,
+                // 需求 影视#7：播放器控件不画描边环，聚焦高亮只用纯白底 + 图标反黑
+                drawRing = false,
+                onFocusedChange = { btnFocused = it },
+                navGroup = navGroup,
+                navOverride = navOverride,
+                onClick = onClick,
+            )
+            .border(1.dp, Color(0x1FFFFFFF), CircleShape),
+    ) {
+        content(if (btnFocused) Color(0xFF111111) else Color.White)
+    }
+}
+
+/** 播放三角 / 暂停双竖条 */
+@Composable
+private fun PlayPauseIcon(playing: Boolean, iconColor: Color, iconSize: Dp) {
+    if (playing) {
+        Canvas(Modifier.size(iconSize)) {
+            val w = this.size.width
+            val h = this.size.height
+            val barW = w * 0.24f
+            val gap = w * 0.14f
+            val r = barW / 2f
+            val y0 = h * 0.18f
+            val y1 = h * 0.82f
+            val cx = w / 2f
+            drawRoundRect(
+                iconColor,
+                topLeft = Offset(cx - gap / 2f - barW, y0),
+                size = androidx.compose.ui.geometry.Size(barW, y1 - y0),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+            )
+            drawRoundRect(
+                iconColor,
+                topLeft = Offset(cx + gap / 2f, y0),
+                size = androidx.compose.ui.geometry.Size(barW, y1 - y0),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+            )
+        }
+    } else {
+        Canvas(Modifier.size(iconSize)) {
+            val w = this.size.width
+            val h = this.size.height
+            val path = Path().apply {
+                moveTo(w * 0.30f, h * 0.18f)
+                lineTo(w * 0.82f, h * 0.50f)
+                lineTo(w * 0.30f, h * 0.82f)
+                close()
+            }
+            drawPath(path, iconColor)
+        }
+    }
+}
+
+@Composable
+private fun ErrorWidget(
+    message: String,
+    onRetry: () -> Unit,
+    onChangeSource: () -> Unit,
+    onBack: () -> Unit,
+    focusRequester: FocusRequester? = null,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xCC000000)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier
+                .width(720.dp)
+                .background(Color(0xFF1C1C22), RoundedCornerShape(20.dp))
+                .padding(40.dp),
+        ) {
+            Text("无法播放", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFB9C0CC),
+                maxLines = 4,
+            )
+            Text(androidx.compose.ui.res.stringResource(com.qiubo.optimaltv.R.string.playback_failure_options),
+                style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB9C0CC))
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                        .dpadFocusable(onClick = onRetry)
+                        .background(AccentBlue, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 34.dp, vertical = 12.dp),
+                ) { Text("重试", color = Color.White, style = MaterialTheme.typography.labelLarge) }
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .dpadFocusable(onClick = onChangeSource)
+                        .background(Color(0x2EFFFFFF), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 34.dp, vertical = 12.dp),
+                ) {
+                    Text(androidx.compose.ui.res.stringResource(com.qiubo.optimaltv.R.string.playback_change_source),
+                        color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .dpadFocusable(onClick = onBack)
+                        .background(Color(0x2EFFFFFF), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 34.dp, vertical = 12.dp),
+                ) { Text("返回", color = Color.White, style = MaterialTheme.typography.labelLarge) }
+            }
+        }
+    }
+}
+
+/** A passive live playback status hint; it must never take focus from the source selector. */
+@Composable
+private fun LivePlaybackFailureHint(message: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .padding(top = 24.dp)
+            .background(Color(0xB3111114), RoundedCornerShape(12.dp))
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text("当前线路无法播放", color = Color.White, style = MaterialTheme.typography.titleSmall)
+        Text(
+            message,
+            color = Color(0xCCFFFFFF),
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            "按 OK 或方向键打开线路列表重试",
+            color = Color(0xCCFFFFFF),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun RouteLinesChevron(expanded: Boolean) {
+    Canvas(Modifier.fillMaxSize()) {
+        val half = size.minDimension * 0.24f
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val path = Path().apply {
+            if (expanded) {
+                moveTo(centerX - half, centerY + half * 0.35f)
+                lineTo(centerX, centerY - half * 0.35f)
+                lineTo(centerX + half, centerY + half * 0.35f)
+            } else {
+                moveTo(centerX - half, centerY - half * 0.35f)
+                lineTo(centerX, centerY + half * 0.35f)
+                lineTo(centerX + half, centerY - half * 0.35f)
+            }
+        }
+        drawPath(path, Color.White, style = Stroke(width = size.minDimension * 0.12f))
+    }
+}
+
+/** 画幅模式 → 渲染容器约束（原始/裁切交给 PlayerView 内部 resize） */
+private fun aspectConstraint(ord: Int): Modifier =
+    when (val m = com.qiubo.optimaltv.data.prefs.AspectMode.of(ord)) {
+        com.qiubo.optimaltv.data.prefs.AspectMode.R16_9 -> Modifier.fillMaxSize().aspectRatio(16f / 9f)
+        com.qiubo.optimaltv.data.prefs.AspectMode.R4_3 -> Modifier.fillMaxSize().aspectRatio(4f / 3f)
+        else -> Modifier.fillMaxSize().then(m.ratio?.let { Modifier.aspectRatio(it) } ?: Modifier)
+    }
+
+/* ⑭（2026-09-08 需求⑭）：TV 版投屏功能全部移除——CastDevicePanel/CastGlyph 随入口一并删除
+   （移动版同款组件在 mobile 工程自有 PlayerScreen，不受影响）。 */
