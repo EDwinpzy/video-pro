@@ -518,6 +518,7 @@ private fun VcardCard(
             Modifier
                 .dpadFocusable(
                     scaleFocused = 1.05f,
+                    allowFocusScaleOnConstrained = true,
                     onFocusedChange = { if (it) ReturnFocus.mark(returnScreen, focusKey) },
                     externalFocusRequester = cardReg?.fr(focusKey),
                     navOverride = { direction ->

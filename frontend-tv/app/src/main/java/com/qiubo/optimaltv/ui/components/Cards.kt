@@ -41,7 +41,11 @@ fun PosterCard(
             modifier = Modifier
                 .width(width)
                 .aspectRatio(5f / 7f)
-                .dpadFocusable(scaleFocused = CARD_FOCUS_SCALE, onClick = onClick)
+                .dpadFocusable(
+                    scaleFocused = CARD_FOCUS_SCALE,
+                    allowFocusScaleOnConstrained = true,
+                    onClick = onClick,
+                )
                 .clip(RoundedCornerShape(14.dp)),
         ) {
             RemotePoster(

@@ -367,6 +367,7 @@ private fun VodStyleCard(
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .dpadFocusable(
                     scaleFocused = CARD_FOCUS_SCALE,
+                    allowFocusScaleOnConstrained = true,
                     onFocusedChange = {
                         if (it && cardKey != null) {
                             ReturnFocus.mark("fav", cardKey)
@@ -429,6 +430,7 @@ private fun HistoryVodCard(
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .dpadFocusable(
                     scaleFocused = CARD_FOCUS_SCALE,
+                    allowFocusScaleOnConstrained = true,
                     onFocusedChange = {
                         if (it) {
                             ReturnFocus.mark("fav", "history:${h.vodId}")

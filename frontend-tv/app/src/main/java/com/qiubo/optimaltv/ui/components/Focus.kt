@@ -66,8 +66,9 @@ const val NAV_UP = 1
 const val NAV_RIGHT = 2
 const val NAV_DOWN = 3
 
-/** Poster-card scale used only when the runtime performance tier allows focus motion. */
+/** Poster-card scale; constrained cards clamp to a lighter 1.03x motion. */
 const val CARD_FOCUS_SCALE = 1.08f
+private const val CONSTRAINED_CARD_FOCUS_SCALE = 1.03f
 
 fun navDirOf(keyCode: Int): Int? = when (keyCode) {
     android.view.KeyEvent.KEYCODE_DPAD_LEFT -> NAV_LEFT
@@ -235,6 +236,8 @@ fun Modifier.dpadFocusable(
     autoSelectDelayMs: Long = 80L,
     /** false = 不画描边环（播放器进度条等自带高亮表达的控件） */
     drawRing: Boolean = true,
+    /** true = 低配设备也允许卡片使用轻微缩放；仅海报卡片使用 */
+    allowFocusScaleOnConstrained: Boolean = false,
     /** true = 悬浮层元素（顶部 tab 栏/联赛筛选）：参与水平行内导航，但不作为垂直移动候选 */
     floating: Boolean = false,
     /** 外部落焦句柄（返回落焦）：与导航注册表共用同一节点 */
@@ -254,11 +257,28 @@ fun Modifier.dpadFocusable(
             autoSelect ||
             floating ||
             navGroup != null
+    val constrainedCardScale =
+        allowFocusScaleOnConstrained && TvPerformanceProfile.isConstrained
+    val resolvedScaleFocused =
+        if (constrainedCardScale) {
+            scaleFocused.coerceAtMost(CONSTRAINED_CARD_FOCUS_SCALE)
+        } else {
+            scaleFocused
+        }
 
     if (TvPerformanceProfile.isConstrained && !needsLegacyFocusRegistry) {
         val interaction = remember { MutableInteractionSource() }
         var focused by remember { mutableStateOf(false) }
         val focusTop = remember { floatArrayOf(Float.NaN) }
+        val scaleAnim = if (allowFocusScaleOnConstrained) {
+            animateFloatAsState(
+                targetValue = if (focused) resolvedScaleFocused else 1f,
+                animationSpec = TvInteractionMotion.focusScaleSpec,
+                label = "focusScale",
+            )
+        } else {
+            null
+        }
         return@composed this
             .onGloballyPositioned { coordinates ->
                 focusTop[0] = coordinates.positionInWindow().y
@@ -276,6 +296,14 @@ fun Modifier.dpadFocusable(
                 interactionSource = interaction,
                 indication = null,
                 onClick = onClick,
+            )
+            .then(
+                scaleAnim?.let { scale ->
+                    Modifier.graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                    }
+                } ?: Modifier,
             )
             .drawWithContent {
                 if (focused) {
@@ -313,13 +341,14 @@ fun Modifier.dpadFocusable(
     val directionKeys = remember { TvDirectionKeyHandler() }
     var focused by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val focusScaleMotion = TvPerformanceProfile.focusScaleMotionEnabled
+    val focusScaleMotion =
+        TvPerformanceProfile.focusScaleMotionEnabled || constrainedCardScale
     // Constrained projectors disable card scaling entirely and rely on the
     // focus ring/background. Avoid creating a dormant graphics layer for every
     // focusable node on those devices.
     val scaleAnim = if (focusScaleMotion) {
         animateFloatAsState(
-            targetValue = if (focused) scaleFocused else 1f,
+            targetValue = if (focused) resolvedScaleFocused else 1f,
             animationSpec = TvInteractionMotion.focusScaleSpec,
             label = "focusScale",
         )

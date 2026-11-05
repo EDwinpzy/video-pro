@@ -582,6 +582,7 @@ private fun ResultCard(
             Modifier
                 .dpadFocusable(
                     scaleFocused = CARD_FOCUS_SCALE,
+                    allowFocusScaleOnConstrained = true,
                     onFocusedChange = {
                         onResultFocusChanged(it)
                         if (it) ReturnFocus.mark("search", item.id)

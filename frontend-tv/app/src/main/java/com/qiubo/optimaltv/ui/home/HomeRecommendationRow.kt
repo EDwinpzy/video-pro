@@ -88,6 +88,7 @@ internal fun HomeRecommendationRow(
                                     modifier = Modifier
                                         .dpadFocusable(
                                             scaleFocused = CARD_FOCUS_SCALE,
+                                            allowFocusScaleOnConstrained = true,
                                             onClick = {
                                                 nav.navigate("detail/" + URLEncoder.encode(entry.id, "UTF-8"))
                                             },
