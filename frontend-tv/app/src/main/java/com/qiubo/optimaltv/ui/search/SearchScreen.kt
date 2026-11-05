@@ -426,7 +426,7 @@ fun SearchScreen(nav: NavController) {
                     modifier =
                         Modifier
                             .weight(1f)
-                            .height(90f.sx(s)),
+                            .height(108f.sx(s)),
                 )
             }
 
