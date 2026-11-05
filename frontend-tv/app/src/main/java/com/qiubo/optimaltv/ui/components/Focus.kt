@@ -222,7 +222,7 @@ fun Modifier.dpadFocusable(
     enabled: Boolean = true,
     shape: Shape = RoundedCornerShape(12.dp),
     scaleFocused: Float = 1.06f,
-    ringWidth: Dp = 2.dp,
+    ringWidth: Dp = 2.5.dp,
     /** 非空 = 聚焦时画背景胶囊（原版 tab/chip 焦点视觉），不画描边环 */
     focusedBg: Color? = null,
     /** focusedBg 胶囊圆角（默认 12dp；全圆角胶囊型按钮传高度一半） */
