@@ -9,7 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,6 +38,7 @@ import com.qiubo.optimaltv.ui.player.PlayerScreen
 import com.qiubo.optimaltv.ui.search.SearchScreen
 import com.qiubo.optimaltv.ui.theme.OptimalTvTheme
 import com.qiubo.optimaltv.auth.DongpianLoginGate
+import com.qiubo.optimaltv.ui.components.VideoProWidescreenStartup
 
 /** 调试直达播放页通道（v1.8 2026-08-30）：debug 构建 DebugNavReceiver 广播写入 pending，
  *  AppRoot 轮询消费——绕过模拟器丢键/焦点漂移，测试直播链路用。
@@ -81,12 +92,7 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides bringIntoViewSpec,
             ) {
                 OptimalTvTheme {
-                    DongpianLoginGate { session, onLogout ->
-                        // Mount home only after all current category feeds and artwork are ready.
-                        HomeStartupGate {
-                            AppRoot(session, onLogout)
-                        }
-                    }
+                    StartupPresentation()
                 }
             }
         }
@@ -186,6 +192,70 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         com.qiubo.optimaltv.OtvLog.i("windowFocusChanged hasFocus=$hasFocus")
+    }
+}
+
+private object StartupPlaybackState {
+    @Volatile
+    var introCompletedThisProcess: Boolean = false
+}
+
+@Composable
+private fun StartupPresentation() {
+    var introComplete by remember {
+        mutableStateOf(StartupPlaybackState.introCompletedThisProcess)
+    }
+    var surfaceReady by remember { mutableStateOf(false) }
+    val curtainVisible = !introComplete || !surfaceReady
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                curtainVisible &&
+                    event.key !in listOf(Key.VolumeDown, Key.VolumeUp)
+            }
+            .pointerInput(curtainVisible) {
+                if (!curtainVisible) return@pointerInput
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                    }
+                }
+            },
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(
+                    if (curtainVisible) {
+                        Modifier.clearAndSetSemantics { }
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            DongpianLoginGate(
+                interactive = !curtainVisible,
+                onStartupSurfaceReady = { surfaceReady = it },
+            ) { session, onLogout ->
+                HomeStartupGate(
+                    allowContent = introComplete,
+                    startupOverlayVisible = curtainVisible,
+                    onStartupSurfaceReady = { surfaceReady = it },
+                ) {
+                    AppRoot(session, onLogout)
+                }
+            }
+        }
+        if (curtainVisible) {
+            VideoProWidescreenStartup(
+                animate = !introComplete,
+                onFinished = {
+                    StartupPlaybackState.introCompletedThisProcess = true
+                    introComplete = true
+                },
+            )
+        }
     }
 }
 

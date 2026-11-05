@@ -43,7 +43,6 @@ import coil.request.SuccessResult
 import com.qiubo.optimaltv.auth.DongpianAuthClient
 import com.qiubo.optimaltv.data.model.posterCandidatesFor
 import com.qiubo.optimaltv.ui.components.InitialFocusEffect
-import com.qiubo.optimaltv.ui.components.VideoProStartupLoading
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -57,7 +56,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
-internal fun HomeStartupGate(content: @Composable () -> Unit) {
+internal fun HomeStartupGate(
+    allowContent: Boolean,
+    startupOverlayVisible: Boolean,
+    onStartupSurfaceReady: (Boolean) -> Unit,
+    content: @Composable () -> Unit,
+) {
     val revision by DongpianAuthClient.sessionRevisionState.collectAsStateWithLifecycle()
     var ready by remember(revision) { mutableStateOf(false) }
     var entered by remember(revision) { mutableStateOf(false) }
@@ -65,8 +69,16 @@ internal fun HomeStartupGate(content: @Composable () -> Unit) {
     var attempt by remember(revision) { mutableIntStateOf(0) }
     var restoreFocusAfterRetry by remember(revision) { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    LaunchedEffect(ready) {
-        if (ready && restoreFocusAfterRetry) {
+    val contentVisible = entered || (ready && allowContent)
+    val startupSurfaceReady = failed || (ready && contentVisible)
+    LaunchedEffect(contentVisible) {
+        if (contentVisible) entered = true
+    }
+    LaunchedEffect(startupSurfaceReady) {
+        onStartupSurfaceReady(startupSurfaceReady)
+    }
+    LaunchedEffect(contentVisible) {
+        if (contentVisible && restoreFocusAfterRetry) {
             withFrameNanos { }
             focusManager.moveFocus(FocusDirection.Next)
             restoreFocusAfterRetry = false
@@ -96,7 +108,6 @@ internal fun HomeStartupGate(content: @Composable () -> Unit) {
             }
             if (loaded == true) {
                 ready = true
-                entered = true
                 OtvLog.i("startup all_home_first_rows_ready")
             } else {
                 failed = true
@@ -111,10 +122,10 @@ internal fun HomeStartupGate(content: @Composable () -> Unit) {
     // Keep navigation and playback composed under the foreground refresh curtain.
     // Returning from Home must not recreate a player or lose its episode/progress.
     Box(Modifier.fillMaxSize().onPreviewKeyEvent {
-        !ready && !failed && it.key in listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight, Key.DirectionCenter, Key.Enter)
+        !startupSurfaceReady && it.key in listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight, Key.DirectionCenter, Key.Enter)
     }) {
-        if (entered) content()
-        if (!ready) {
+        if (contentVisible) content()
+        if (!ready && !startupOverlayVisible) {
             StartupLoadingScreen(failed) {
                 restoreFocusAfterRetry = entered
                 attempt++
@@ -131,7 +142,7 @@ private fun StartupLoadingScreen(
     val retryFocus = remember { FocusRequester() }
     InitialFocusEffect(retryFocus, "startup-retry", enabled = failed)
     if (!failed) {
-        VideoProStartupLoading()
+        Box(Modifier.fillMaxSize().background(Color(0xFF100D0F)))
     } else {
         Column(
             modifier = Modifier.fillMaxSize().background(Color(0xFF050507)).padding(48.dp),

@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +52,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.qiubo.optimaltv.Graph
 import com.qiubo.optimaltv.ui.components.InitialFocusEffect
 import com.qiubo.optimaltv.ui.components.SystemEditText
-import com.qiubo.optimaltv.ui.components.VideoProStartupLoading
 import com.qiubo.optimaltv.ui.components.dpadFocusable
 import com.qiubo.optimaltv.ui.components.rememberSystemEditTextHandle
 import com.qiubo.optimaltv.ui.components.tvReducedSemantics
@@ -63,8 +63,29 @@ object LoginInputMode {
     var active: Boolean = false
 }
 
+internal fun resolveLoginStartupSurfaceReady(
+    restoring: Boolean,
+    canRetryRestore: Boolean,
+    hasSession: Boolean,
+    loginSurfaceReady: Boolean,
+    hasBlockingSyncError: Boolean,
+    accountContentPrepared: Boolean,
+): Boolean? =
+    when {
+        restoring -> false
+        canRetryRestore -> true
+        !hasSession -> loginSurfaceReady
+        hasBlockingSyncError -> true
+        !accountContentPrepared -> false
+        else -> null
+    }
+
 @Composable
-fun DongpianLoginGate(content: @Composable (DongpianAuthSession, () -> Unit) -> Unit) {
+fun DongpianLoginGate(
+    interactive: Boolean,
+    onStartupSurfaceReady: (Boolean) -> Unit,
+    content: @Composable (DongpianAuthSession, () -> Unit) -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val session by DongpianAuthClient.sessionState.collectAsStateWithLifecycle()
@@ -77,6 +98,7 @@ fun DongpianLoginGate(content: @Composable (DongpianAuthSession, () -> Unit) -> 
     var preparedRevision by remember(sessionRevision, session?.userId) { mutableStateOf<Long?>(null) }
     var syncAttempt by remember(sessionRevision) { mutableIntStateOf(0) }
     var syncError by remember(sessionRevision) { mutableStateOf<String?>(null) }
+    var loginSurfaceReady by remember(session?.userId) { mutableStateOf(false) }
 
     LaunchedEffect(restoreAttempt) {
         restoring = true
@@ -121,13 +143,27 @@ fun DongpianLoginGate(content: @Composable (DongpianAuthSession, () -> Unit) -> 
         }
     }
 
-    DisposableEffect(session) {
-        LoginInputMode.active = session == null
+    DisposableEffect(session, interactive) {
+        LoginInputMode.active = session == null && interactive
         onDispose { LoginInputMode.active = false }
     }
 
+    val accountPrepared = accountContentIsPrepared(sessionRevision, preparedRevision)
+    val startupSurfaceReady = resolveLoginStartupSurfaceReady(
+        restoring = restoring,
+        canRetryRestore = canRetryRestore,
+        hasSession = session != null,
+        loginSurfaceReady = loginSurfaceReady,
+        hasBlockingSyncError = syncError != null && !accountPrepared,
+        accountContentPrepared = accountPrepared,
+    )
+    LaunchedEffect(startupSurfaceReady) {
+        startupSurfaceReady?.let(onStartupSurfaceReady)
+    }
+
     when {
-        restoring -> LoginLoading()
+        restoring -> StartupHiddenSurface()
+        canRetryRestore && !interactive -> StartupHiddenSurface()
         session == null && canRetryRestore ->
             RestoreFailureScreen(
                 message = restoreMessage ?: "无法恢复登录状态，请重试。",
@@ -140,7 +176,13 @@ fun DongpianLoginGate(content: @Composable (DongpianAuthSession, () -> Unit) -> 
         session == null ->
             DongpianLoginScreen(
                 initialMessage = restoreMessage ?: notice,
+                interactive = interactive,
+                onSurfaceReady = { loginSurfaceReady = it },
             )
+        syncError != null &&
+            !accountContentIsPrepared(sessionRevision, preparedRevision) &&
+            !interactive ->
+            StartupHiddenSurface()
         syncError != null && !accountContentIsPrepared(sessionRevision, preparedRevision) ->
             RestoreFailureScreen(
                 message = syncError.orEmpty(),
@@ -150,7 +192,7 @@ fun DongpianLoginGate(content: @Composable (DongpianAuthSession, () -> Unit) -> 
                 retryLabel = "重试同步",
             )
         !accountContentIsPrepared(sessionRevision, preparedRevision) ->
-            LoginLoading()
+            StartupHiddenSurface()
         else -> {
             val current = session ?: return
             content(current) {
@@ -163,6 +205,8 @@ fun DongpianLoginGate(content: @Composable (DongpianAuthSession, () -> Unit) -> 
 @Composable
 private fun DongpianLoginScreen(
     initialMessage: String?,
+    interactive: Boolean,
+    onSurfaceReady: (Boolean) -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -176,6 +220,7 @@ private fun DongpianLoginScreen(
     var credentialsReady by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf(initialMessage) }
+    val currentOnSurfaceReady by rememberUpdatedState(onSurfaceReady)
     // Traversal state is an implementation detail. Keeping it outside Compose state avoids
     // recomposing the full-screen gradient and card for every D-pad focus move.
     val focusIndex = remember { intArrayOf(0) }
@@ -274,8 +319,12 @@ private fun DongpianLoginScreen(
         }
     }
 
-    if (!credentialsReady) {
-        LoginLoading()
+    LaunchedEffect(credentialsReady) {
+        currentOnSurfaceReady(credentialsReady)
+    }
+
+    if (!credentialsReady || !interactive) {
+        StartupHiddenSurface()
         return
     }
 
@@ -561,6 +610,6 @@ private fun RestoreFailureScreen(
 }
 
 @Composable
-private fun LoginLoading() {
-    VideoProStartupLoading()
+private fun StartupHiddenSurface() {
+    Box(Modifier.fillMaxSize().background(Color(0xFF100D0F)))
 }
