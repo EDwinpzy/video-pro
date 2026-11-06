@@ -12,21 +12,23 @@ class VideoProWidescreenTimelineTest {
     }
 
     @Test
-    fun `opening midpoint retains the original half screen framing`() {
+    fun `opening reaches half screen at the midpoint`() {
         val frame = VideoProWidescreenTimeline.frameAt(1f)
 
-        assertEquals(366f, frame.openingHeight, 0.01f)
-        assertEquals(0.5083333f, frame.coverage, 0.0001f)
+        assertEquals(360f, frame.openingHeight, 0.01f)
+        assertEquals(0.5f, frame.coverage, 0.0001f)
     }
 
     @Test
-    fun `initial frame is the original compact wine slit`() {
-        val frame = VideoProWidescreenTimeline.frameAt(0f)
+    fun `initial hold is fully black before the curtain expands`() {
+        val start = VideoProWidescreenTimeline.frameAt(0f)
+        val openingStart = VideoProWidescreenTimeline.frameAt(0.1f)
 
-        assertEquals(12f, frame.openingHeight, 0f)
-        assertEquals(540f, frame.iconX, 0f)
-        assertEquals(1100f, frame.videoX, 0f)
-        assertEquals(1200f, frame.proX, 0f)
+        assertEquals(0f, start.openingHeight, 0f)
+        assertEquals(0f, openingStart.openingHeight, 0f)
+        assertEquals(540f, start.iconX, 0f)
+        assertEquals(1100f, start.videoX, 0f)
+        assertEquals(1200f, start.proX, 0f)
     }
 
     @Test

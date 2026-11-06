@@ -31,7 +31,7 @@ import com.qiubo.optimaltv.R
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private val Black = Color(0xFF100D0F)
+private val Black = Color(0xFF000000)
 private val White = Color(0xFFF7F4F2)
 private val Wine = Color(0xFF42000A)
 
@@ -40,8 +40,9 @@ private val Wine = Color(0xFF42000A)
  *
  * The scene is authored against the original 1280x720 artwork. The wine field
  * fills the current display while the icon and wordmark retain their aspect
- * ratio. The 1.9-second motion runs at 0.5x for 3.8 seconds, then holds the
- * completed wine field while the destination becomes ready.
+ * ratio. The 1.9-second motion starts on a fully black frame, opens slowly at
+ * 0.5x for 3.8 seconds, then holds the completed wine field while the
+ * destination becomes ready.
  */
 @Composable
 fun VideoProWidescreenStartup(
@@ -240,7 +241,7 @@ internal object VideoProWidescreenTimeline {
     const val videoWordmarkOffsetX = -1f
     const val proWordmarkTop = 373f
     const val proWordmarkOffsetX = 7f
-    const val compactHeight = 12f
+    const val closedHeight = 0f
     const val fullHeight = virtualHeight
 
     val wallMotionDurationMillis: Long
@@ -253,7 +254,7 @@ internal object VideoProWidescreenTimeline {
         val opening = smooth(phase(timeSeconds, start = 0.1f, duration = 1.8f))
         val movement = easeOut(phase(timeSeconds, start = 0.2f, duration = 1.5f))
         return VideoProWidescreenFrameState(
-            openingHeight = mix(compactHeight, fullHeight, opening),
+            openingHeight = mix(closedHeight, fullHeight, opening),
             iconX = mix(540f, 355f, movement),
             videoX = mix(1100f, 595f, movement),
             proX = mix(1200f, 595f, movement),
