@@ -30,24 +30,26 @@ import com.qiubo.optimaltv.ui.theme.sxs
  * 停内嵌后端 → finishAffinity → 杀主进程，所以不会再复现旧毛病。
  */
 @Composable
-fun rememberDoubleBackExit(onHint: (String) -> Unit): () -> Unit {
+fun rememberDoubleBackExit(onHint: (String) -> Unit): () -> Boolean {
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
     var lastBackAt by remember { mutableLongStateOf(0L) }
     return {
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastBackAt <= DOUBLE_BACK_WINDOW_MS) {
-            lastBackAt = 0L
-            onHint("已退出应用")
-            activity?.let { com.qiubo.optimaltv.lifecycle.ExitCoordinator.exit(it) }
-        } else {
-            lastBackAt = now
-            onHint("再按一次退出应用")
+        when (com.qiubo.optimaltv.lifecycle.DoubleBackExitPolicy.action(lastBackAt, now)) {
+            com.qiubo.optimaltv.lifecycle.DoubleBackExitPolicy.Action.EXIT -> {
+                lastBackAt = 0L
+                onHint("已退出应用")
+                activity?.let { com.qiubo.optimaltv.lifecycle.ExitCoordinator.exit(it) }
+                true
+            }
+            com.qiubo.optimaltv.lifecycle.DoubleBackExitPolicy.Action.PROMPT -> {
+                lastBackAt = now
+                onHint("再按一次退出应用")
+                false
+            }
         }
     }
 }
-
-/** 双击退出的时间窗（用户连按两次判定为「要退出」） */
-private const val DOUBLE_BACK_WINDOW_MS = 2500L
 
 /**
  * 底部轻提示（需求 足球#5：只保留文字，背景半透明灰色）。

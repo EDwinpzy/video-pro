@@ -268,13 +268,10 @@ fun VodScreen(
     val heroIdxTop = heroesTop.indexOfFirst { it.id == selectedHeroId }.coerceAtLeast(0)
     // 需求 #15：海报不自动轮播，仅焦点在播放钮上左右键手动切换
 
-    // 需求 #2：任意处按返回 → 回顶部（滚动归零 + 焦点回当前 tab）；
-    // 已在顶部且焦点在 tab 栏 → 双击才彻底退出应用（需求⑥，首按轻提示）
+    // 根页返回：首按只提示，2.5s 内再按才彻底退出（不把应用退到后台）
     val listStates = remember { mutableMapOf<String, LazyListState>() }
     val vodListState = listStates.getOrPut(tabKey) { createTvLazyListState() }
-    val backScope = androidx.compose.runtime.rememberCoroutineScope()
     val heroFocusScope = rememberCoroutineScope()
-    var tabFocused by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(hint) { if (hint != null) { kotlinx.coroutines.delay(2500); hint = null } }
     val exitApp = com.qiubo.optimaltv.ui.components.rememberDoubleBackExit { hint = it }
@@ -289,14 +286,7 @@ fun VodScreen(
         }
     }
     BackHandler {
-        if (tabFocused) {
-            exitApp()
-        } else {
-            backScope.launch {
-                vodListState.scrollToItem(0)
-                runCatching { tabFocus.requestFocus() }
-            }
-        }
+        exitApp()
     }
     LaunchedEffect(returnKey, heroesTop) {
         returnKey ?: return@LaunchedEffect
@@ -375,7 +365,6 @@ fun VodScreen(
             tabKey, { key -> navigateToTab(nav, key) }, { nav.navigate("search") }, tabFocus,
             contentDownFocus = heroPlayFocus,
             contentDownScrollTop = { vodListState.scrollToItem(0) },
-            onTabFocused = { tabFocused = it },
             autoHide = true,   // v1.16：光标下移进内容区隐藏顶栏，回顶部显示
         )
         OtvHint(hint)

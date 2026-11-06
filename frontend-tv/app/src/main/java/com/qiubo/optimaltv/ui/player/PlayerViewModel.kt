@@ -8,12 +8,15 @@ import com.qiubo.optimaltv.OtvLog
 import com.qiubo.optimaltv.auth.DongpianAuthException
 import com.qiubo.optimaltv.data.db.HistoryEntity
 import com.qiubo.optimaltv.data.db.ProgressEntity
+import com.qiubo.optimaltv.data.model.Episode
 import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.data.model.LiveStreamSource
 import com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl
+import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.prefs.AspectMode
 import com.qiubo.optimaltv.data.prefs.DanmakuDisplayArea
 import com.qiubo.optimaltv.data.prefs.SettingsStore
+import com.qiubo.optimaltv.data.prefs.SkipSegmentsMode
 import com.qiubo.optimaltv.data.repo.LiveSourcePolicy
 import com.qiubo.optimaltv.data.repo.SelectedSourceRefreshException
 import com.qiubo.optimaltv.data.repo.VodRepository
@@ -66,6 +69,23 @@ internal object LineSpeedTestPolicy {
         else -> ""
     }
 }
+
+private data class EpisodeSelection(
+    val item: VodItem,
+    val episodeIndex: Int,
+    val lines: List<LineInfo>,
+    val lineIndex: Int,
+)
+
+private data class PreloadedNextEpisode(
+    val episodeIndex: Int,
+    val item: VodItem,
+    val lines: List<LineInfo>,
+    val lineIndex: Int,
+    val playback: ResolvedPlaybackUrl,
+    val sourceIdentity: String?,
+    val engineEpoch: Int,
+)
 
 /** Small, pure coordination rules shared by the live stall watchdog and health sampler. */
 internal object PlaybackRecoveryCoordinationPolicy {
@@ -341,6 +361,7 @@ data class PlayerUiState(
     val danmakuFontScale: Float = 1f,
     val danmakuOpacity: Float = 1f,
     val danmakuScrollSpeed: Float = 1f,
+    val skipSegmentsMode: SkipSegmentsMode = SkipSegmentsMode.OFF,
     val danmakuAvailable: Boolean = false,
     val danmakuLoading: Boolean = false,
     val danmakuStatus: String = "",
@@ -528,6 +549,11 @@ class PlayerViewModel(
     private var httpRecoveryUsedFallback = false
     private var watchdogJob: Job? = null
     private var prefetchJob: Job? = null
+    private var preloadNextJob: Job? = null
+    private var preloadedNext: PreloadedNextEpisode? = null
+    private var preloadAttemptedEpisode = -1
+    private var observedMediaSequence = 0
+    private var skipIntroApplied = false
     private var stallJob: Job? = null
     /** 长时体检/冻结取证任务（2026-09-16 需求①）：见 PlaybackHealthLog 头注释 */
     private var healthJob: Job? = null
@@ -634,6 +660,12 @@ class PlayerViewModel(
      * 都救不回画面（新声音进新引擎，画面进不来）。
      */
     private fun installEngine(newEngine: MediaEngine) {
+        preloadNextJob?.cancel()
+        preloadNextJob = null
+        preloadedNext = null
+        preloadAttemptedEpisode = -1
+        observedMediaSequence = 0
+        skipIntroApplied = false
         engine = newEngine
         engineEpochCounter++
         _ui.value = _ui.value.copy(
@@ -680,6 +712,7 @@ class PlayerViewModel(
                     danmakuFontScale = preferences.danmakuFontScale,
                     danmakuOpacity = preferences.danmakuOpacity,
                     danmakuScrollSpeed = preferences.danmakuScrollSpeed,
+                    skipSegmentsMode = SkipSegmentsMode.of(preferences.skipSegmentsOrdinal),
                 )
         }
         if (autoBoot) sourceBootJob = viewModelScope.launch { boot() }
@@ -1026,9 +1059,14 @@ class PlayerViewModel(
     private fun collectEngineState() {
         engineStateJob?.cancel()
         val observedEngine = engine
+        observedMediaSequence = observedEngine.uiState.value.mediaSequence
         engineStateJob = viewModelScope.launch {
             observedEngine.uiState.collect { st ->
                 if (engine !== observedEngine) return@collect
+                if (st.mediaSequence > observedMediaSequence) {
+                    observedMediaSequence = st.mediaSequence
+                    promotePreloadedNextEpisode(st)
+                }
                 // v1.19 流畅度：控制条隐藏时把进度类字段（positionMs/bufferedAheadMs，
                 // ticker 500ms 一变）量化到整秒——StateFlow 按结构相等去重，隐藏期
                 // 发射频率 2Hz→1Hz，播放页/电视页整页重组减半（可见时保持 500ms 原速，
@@ -1075,6 +1113,7 @@ class PlayerViewModel(
                     speed = st.speed,
                     firstFrameRendered = st.firstFrameRendered,
                 )
+                maybeApplyIntroSkip(st)
                 when {
                     PlaybackRecoveryCoordinationPolicy.endedBeforeVodStarted(
                         isLive = _ui.value.isLive,
@@ -1136,8 +1175,278 @@ class PlayerViewModel(
                         }
                     }
                 }
+                maybeStartNextEpisodePreload(st)
+                maybeAdvanceForOutro(st)
             }
         }
+    }
+
+    private fun maybeApplyIntroSkip(st: com.qiubo.optimaltv.playback.EngineUiState) {
+        if (skipIntroApplied || _ui.value.isLive || _ui.value.isMovie) return
+        if (!SkipSegmentPolicy.shouldApplyIntro(
+                mode = _ui.value.skipSegmentsMode,
+                startPositionMs = currentSessionStartMs,
+                durationMs = st.durationMs,
+                alreadyApplied = skipIntroApplied,
+            )
+        ) {
+            if (currentSessionStartMs >= 1_000L) skipIntroApplied = true
+            return
+        }
+        val target = SkipSegmentPolicy.introSkipMs(st.durationMs)
+        if (target <= 0L || st.positionMs >= target - 500L) {
+            skipIntroApplied = true
+            return
+        }
+        skipIntroApplied = true
+        pendingVodSeekTargetMs = target
+        runCatching { engine.seekTo(target) }
+        OtvLog.i("跳过片头：seek ${target}ms（片长 ${st.durationMs}ms）")
+    }
+
+    private fun maybeStartNextEpisodePreload(st: com.qiubo.optimaltv.playback.EngineUiState) {
+        val ui = _ui.value
+        if (ui.isLive || ui.isMovie || ui.fatalMsg != null || ui.sourceResolving) return
+        if (hostInBackground || !hasEngine() || !engine.supportsSeamlessNext) return
+        if (st.state != EnginePlayState.READY || !st.isPlaying || st.durationMs <= 0L) return
+        val next = AutoPlayPolicy.nextEpisodeIndex(
+            isLive = ui.isLive,
+            isMovie = ui.isMovie,
+            currentIndex = ui.epIndex,
+            episodeCount = ui.epCount,
+        ) ?: return
+        if (preloadedNext?.episodeIndex == next || preloadAttemptedEpisode == next) return
+        if (!NextEpisodePreloadPolicy.shouldStart(st.positionMs, st.durationMs, hasNextEpisode = true)) return
+        startNextEpisodePreload(next)
+    }
+
+    private fun maybeAdvanceForOutro(st: com.qiubo.optimaltv.playback.EngineUiState) {
+        val ui = _ui.value
+        if (ui.isLive || ui.isMovie || ui.fatalMsg != null || ui.sourceResolving) return
+        if (st.state != EnginePlayState.READY || !st.isPlaying || st.durationMs <= 0L) return
+        if (handledEndedSessionGen == sessionGen) return
+        val next = AutoPlayPolicy.nextEpisodeIndex(
+            isLive = ui.isLive,
+            isMovie = ui.isMovie,
+            currentIndex = ui.epIndex,
+            episodeCount = ui.epCount,
+        ) ?: return
+        if (!SkipSegmentPolicy.shouldSkipOutro(
+                mode = ui.skipSegmentsMode,
+                positionMs = st.positionMs,
+                durationMs = st.durationMs,
+                hasNextEpisode = true,
+            )
+        ) return
+        handledEndedSessionGen = sessionGen
+        OtvLog.i("跳过片尾：进入第 ${next + 1} 集")
+        advanceToNextEpisode(next)
+    }
+
+    private fun advanceToNextEpisode(next: Int) {
+        if (preloadedNext?.episodeIndex == next && engine.hasQueuedNextEpisode()) {
+            if (engine.skipToQueuedNextEpisode()) {
+                OtvLog.i("使用预加载队列无缝进入第 ${next + 1} 集")
+                return
+            }
+        }
+        switchEpisode(next)
+    }
+
+    private fun promotePreloadedNextEpisode(st: com.qiubo.optimaltv.playback.EngineUiState) {
+        val preload = preloadedNext ?: run {
+            OtvLog.w("播放器已进入下一媒体，但没有可用的预加载信息")
+            return
+        }
+        if (preload.engineEpoch != engineEpochCounter) {
+            preloadedNext = null
+            return
+        }
+        preloadedNext = null
+        preloadNextJob?.cancel()
+        preloadNextJob = null
+        val previous = _ui.value
+        if (previous.epIndex != preload.episodeIndex) {
+            viewModelScope.launch { saveProgress(force = true, snapshot = previous) }
+        }
+        prefetchJob?.cancel()
+        watchdogJob?.cancel()
+        stallJob?.cancel()
+        healthJob?.cancel()
+        firstFrameJob?.cancel()
+        vodLadderJob?.cancel()
+        cancelVodRetry()
+        cancelStallRecovery()
+        vodHttpDeadlineJob?.cancel()
+        remoteSeekJob?.cancel()
+        remoteSeekJob = null
+        sessionGen++
+        handledEndedSessionGen = -1
+        pendingVodSeekTargetMs = null
+        currentItem = preload.item
+        episodeNamesSourceIdentity = preload.sourceIdentity
+        sessionUrl = preload.playback.url
+        sessionPlayback = preload.playback
+        sessionViaRelay = preload.playback.url.contains("/api/relay")
+        currentSessionStartMs = 0L
+        currentSessionAutoplay = true
+        playbackStartIntent.beginUserSelection()
+        awaitingPrepare = true
+        startedThisSession = false
+        vodReachedReadyThisAttempt = false
+        skipIntroApplied = false
+        clearFirstFrameWaitBudgets()
+        triedLines.clear()
+        triedLines += preload.lineIndex
+        sameLineRetries = 0
+        softwareFallbackTried = false
+        vlcFallbackTried = false
+        audioCodecChecked = false
+        recoveryAttempt = 0
+        lastAutoSwitchAt = -1L
+        preloadAttemptedEpisode = -1
+        _ui.value = previous.copy(
+            epIndex = preload.episodeIndex,
+            epCount = preload.item.episodes.size.coerceAtLeast(1),
+            epNames = preload.item.episodes.map { it.name },
+            epKeys = episodeIdentityKeys(preload.item.episodes),
+            lines = preload.lines,
+            activeLine = preload.lineIndex,
+            fatalMsg = null,
+            sourceResolving = false,
+            playState = st.state,
+            positionMs = st.positionMs.coerceAtLeast(0L),
+            durationMs = st.durationMs,
+            bufferedAheadMs = st.bufferedAheadMs,
+            isPlaying = st.isPlaying,
+            firstFrameRendered = false,
+            panel = Panel.NONE,
+            controlsVisible = false,
+            srcPickerVisible = false,
+        )
+        startDanmakuForEpisode(preload.item, preload.episodeIndex)
+        armWatchdog()
+        armFirstFrameWatchdog()
+        startStallMonitor()
+        startHealthMonitor()
+        prefetchLines()
+        OtvLog.i("无缝切换到第 ${preload.episodeIndex + 1} 集（line=${preload.lineIndex}）")
+    }
+
+    private fun startNextEpisodePreload(next: Int) {
+        val state = _ui.value
+        val item = currentItem ?: return
+        val requestedEpisode = item.episodes.getOrNull(next) ?: return
+        val line = state.lines.getOrNull(state.activeLine) ?: return
+        val identities = listOfNotNull(
+            VodSourceSelectionPolicy.identity(line),
+            vodSourceIdentity(line),
+            episodeNamesSourceIdentity,
+        ).distinct()
+        val providerGroupKey = VodSourceSelectionPolicy.providerGroupKey(line)
+        val generation = sessionGen
+        val expectedEngine = engine
+        val expectedEpoch = engineEpochCounter
+        preloadAttemptedEpisode = next
+        val job = viewModelScope.launch {
+            try {
+                val selection = resolveEpisodeSelection(
+                    item = item,
+                    requestedEpisode = requestedEpisode,
+                    selectedSourceIdentities = identities,
+                    selectedProviderGroupKey = providerGroupKey,
+                    forceRefresh = false,
+                ) ?: return@launch
+                if (!isCurrentPreload(generation, expectedEngine, expectedEpoch)) return@launch
+                val selectedLine = selection.lines.getOrNull(selection.lineIndex) ?: return@launch
+                val preferRelay = selectedLine.playRef.isBlank() || selectedLine.playRef !in relayBroken
+                val playback = repo.resolvePlayback(selectedLine, preferRelay, forceRefresh = false)
+                if (playback.url.isBlank() || !isCurrentPreload(generation, expectedEngine, expectedEpoch)) {
+                    return@launch
+                }
+                val queued = expectedEngine.enqueueNextEpisode(
+                    PrepareRequest(
+                        url = playback.url,
+                        startMs = 0L,
+                        headers = playback.headers,
+                        userAgent = playback.userAgent,
+                        mimeType = playback.mimeType,
+                        autoplay = true,
+                    ),
+                )
+                if (!queued || !isCurrentPreload(generation, expectedEngine, expectedEpoch)) return@launch
+                preloadedNext = PreloadedNextEpisode(
+                    episodeIndex = selection.episodeIndex,
+                    item = selection.item,
+                    lines = selection.lines,
+                    lineIndex = selection.lineIndex,
+                    playback = playback,
+                    sourceIdentity = VodSourceSelectionPolicy.episodeIdentity(selectedLine),
+                    engineEpoch = expectedEpoch,
+                )
+                OtvLog.i(
+                    "下一集预加载完成 ep=${selection.episodeIndex + 1} " +
+                        "line=${selection.lineIndex} buf=${playback.url.take(80)}",
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                OtvLog.w("下一集预加载失败 ep=${next + 1}: ${failure.message}")
+                runCatching { expectedEngine.clearQueuedNextEpisode() }
+            } finally {
+                if (preloadNextJob === currentCoroutineContext()[Job]) preloadNextJob = null
+            }
+        }
+        preloadNextJob = job
+        job.invokeOnCompletion {
+            if (preloadNextJob === job) preloadNextJob = null
+        }
+    }
+
+    private suspend fun resolveEpisodeSelection(
+        item: VodItem,
+        requestedEpisode: Episode,
+        selectedSourceIdentities: List<String>,
+        selectedProviderGroupKey: String?,
+        forceRefresh: Boolean,
+    ): EpisodeSelection? {
+        val refreshedItem = repo.resolveDetail(item.id, forceRefresh = forceRefresh) ?: item
+        val matchedEpisode = refreshedEpisodeIndex(
+            requestedEpisode,
+            refreshedItem.episodes,
+            stableTokenIdentity = item.detailRef.startsWith("dongpian:"),
+        ) ?: return null
+        val newLines = VisibleVodLinePolicy.apply(repo.resolveLines(refreshedItem, matchedEpisode))
+        if (newLines.isEmpty()) return null
+        val rememberedSource = if (isFootballVod) null else settings.lastVodSource(vodId)
+        val lineIndex = VodSourceSelectionPolicy.selectEpisodeIndex(
+            lines = newLines,
+            preferredIdentities = listOfNotNull(rememberedSource) + selectedSourceIdentities,
+            preferredProviderGroupKey = selectedProviderGroupKey,
+        ) ?: return null
+        val sourceEpisodes =
+            repo.episodesForLine(refreshedItem, newLines[lineIndex])
+                ?.takeIf { matchedEpisode in it.indices }
+        val nextItem = sourceEpisodes?.let { refreshedItem.copy(episodes = it) } ?: refreshedItem
+        return EpisodeSelection(nextItem, matchedEpisode, newLines, lineIndex)
+    }
+
+    private fun isCurrentPreload(
+        generation: Int,
+        expectedEngine: MediaEngine,
+        expectedEpoch: Int,
+    ): Boolean =
+        generation == sessionGen &&
+            hasEngine() &&
+            engine === expectedEngine &&
+            expectedEpoch == engineEpochCounter
+
+    private fun clearNextEpisodePreload(resetAttempt: Boolean = true) {
+        preloadNextJob?.cancel()
+        preloadNextJob = null
+        preloadedNext = null
+        if (resetAttempt) preloadAttemptedEpisode = -1
+        runCatching { if (hasEngine()) engine.clearQueuedNextEpisode() }
     }
 
     /** 点播集结束后自动进入下一集；直播和最后一集保持结束态。 */
@@ -1170,7 +1479,7 @@ class PlayerViewModel(
             episodeCount = current.epCount,
         ) ?: return
         OtvLog.i("点播自动连播：${current.epIndex + 1} → ${next + 1}")
-        switchEpisode(next)
+        advanceToNextEpisode(next)
     }
 
     private suspend fun boot(fresh: Boolean = false) {
@@ -1595,6 +1904,7 @@ class PlayerViewModel(
         currentCoroutineContext().ensureActive()
         if (!isCurrentPlaybackRequest(gen, lineIdx, sessionEngine, sessionEngineEpoch)) return
         currentSessionStartMs = startPos.coerceAtLeast(0L)
+        skipIntroApplied = false
         currentSessionAutoplay = playbackStartIntent.shouldAutoplay(startTrigger) && !hostInBackground
         _ui.value = _ui.value.copy(firstFrameRendered = false)
         awaitingPrepare = true
@@ -2383,6 +2693,7 @@ class PlayerViewModel(
 
     /** Manual VOD selection invalidates any older resolver before it can prepare a stale URL. */
     private fun supersedePendingVodSession(): Int {
+        clearNextEpisodePreload()
         vodHttpRecoveryJob?.cancel()
         vodHttpRecoveryJob = null
         remoteSeekJob?.cancel()
@@ -3433,6 +3744,12 @@ class PlayerViewModel(
         touch()
     }
 
+    fun setSkipSegmentsMode(mode: SkipSegmentsMode) {
+        _ui.value = _ui.value.copy(skipSegmentsMode = mode)
+        viewModelScope.launch { settings.setSkipSegments(mode.ordinal) }
+        touch()
+    }
+
     private fun startDanmakuForEpisode(
         item: com.qiubo.optimaltv.data.model.VodItem,
         episodeIndex: Int,
@@ -3811,6 +4128,8 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        preloadNextJob?.cancel()
+        preloadNextJob = null
         vodHttpDeadlineJob?.cancel()
         vodHttpRecoveryJob?.cancel()
         remoteSeekJob?.cancel()

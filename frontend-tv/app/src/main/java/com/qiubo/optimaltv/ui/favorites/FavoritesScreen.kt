@@ -159,21 +159,13 @@ fun FavoritesScreen(
         restoredFocus = true
     }
 
-    // 需求 #2：任意处按返回 → 回顶部；已在顶部且焦点在 tab 栏 → 双击才彻底退出（需求⑥）
+    // 根页返回：首按只提示，2.5s 内再按才彻底退出（不把应用退到后台）
     val favListState = rememberLazyListState()
-    val backScope = androidx.compose.runtime.rememberCoroutineScope()
-    var tabFocused by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(hint) { if (hint != null) { kotlinx.coroutines.delay(2500); hint = null } }
     val exitApp = com.qiubo.optimaltv.ui.components.rememberDoubleBackExit { hint = it }
     BackHandler {
-        val atTop = favListState.firstVisibleItemIndex == 0 && favListState.firstVisibleItemScrollOffset == 0
-        if (atTop && tabFocused) {
-            exitApp()
-        } else {
-            backScope.launch { favListState.scrollToItem(0) }
-            runCatching { tabFocus.requestFocus() }
-        }
+        exitApp()
     }
 
     val cat = catalogState.catalog
@@ -252,7 +244,6 @@ fun FavoritesScreen(
             "me", { key -> navigateToTab(nav, key) }, { nav.navigate("search") }, tabFocus,
             contentDownFocus = contentFocus,
             contentDownScrollTop = { favListState.scrollToItem(0) },
-            onTabFocused = { tabFocused = it },
             autoHide = true,   // v1.16：光标下移进内容区隐藏顶栏，回顶部显示
         )
         OtvHint(hint)

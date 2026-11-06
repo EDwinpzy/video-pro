@@ -63,6 +63,7 @@ import com.qiubo.optimaltv.TvPerformanceProfile
 import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.data.model.formatTime
 import com.qiubo.optimaltv.data.prefs.DanmakuDisplayArea
+import com.qiubo.optimaltv.data.prefs.SkipSegmentsMode
 import com.qiubo.optimaltv.ui.components.NAV_DOWN
 import com.qiubo.optimaltv.ui.components.NAV_LEFT
 import com.qiubo.optimaltv.ui.components.NAV_RIGHT
@@ -211,6 +212,13 @@ internal fun ClassicMorePanel(
     val displayAreas = DanmakuDisplayArea.menuEntries
     val settingRows =
         listOf(
+            SidebarSettingRow(
+                label = "跳过片头片尾",
+                options = SkipSegmentsMode.menuEntries.map { it.label },
+                selectedIndex =
+                    SkipSegmentsMode.menuEntries.indexOf(ui.skipSegmentsMode).coerceAtLeast(0),
+                onSelect = { vm.setSkipSegmentsMode(SkipSegmentsMode.menuEntries[it]) },
+            ),
             SidebarSettingRow(
                 label = "播放倍速",
                 options = PlayerViewModel.SPEED_STEPS.map { "${it}×" },
