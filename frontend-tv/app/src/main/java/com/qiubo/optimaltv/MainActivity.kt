@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         consumeDebugNav(intent)
     }
 
@@ -270,6 +271,9 @@ private fun AppRoot(
     // 调试直达播放页：debug 广播 → pending 消费（详见 DebugNavBus；release 无写入方）
     LaunchedEffect(Unit) {
         while (true) {
+            com.qiubo.optimaltv.voice.VoiceSearchBus.takeNavigationQuery()?.let {
+                nav.navigate("search") { launchSingleTop = true }
+            }
             DebugNavBus.pendingDetailId?.let { id ->
                 DebugNavBus.pendingDetailId = null
                 nav.navigate("detail/" + java.net.URLEncoder.encode(id, "UTF-8"))

@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
+    <permission
+        android:name="com.dongpiandi.videopro.permission.VOICE_SEARCH"
+        android:protectionLevel="signature" />
+
     <!-- 纯 D-pad 大屏应用：无触摸也可用（方案 §2.2） -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -53,6 +57,19 @@
             android:exported="true"
             android:label="@string/system_dictation_service_label"
             android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".voice.VoiceSearchActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:permission="com.dongpiandi.videopro.permission.VOICE_SEARCH"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.dongpiandi.videopro.action.OPEN_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".MainActivity"

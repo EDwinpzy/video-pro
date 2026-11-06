@@ -64,6 +64,7 @@ import com.qiubo.optimaltv.ui.theme.OtvColors
 import com.qiubo.optimaltv.ui.theme.rememberUiScale
 import com.qiubo.optimaltv.ui.theme.sx
 import com.qiubo.optimaltv.ui.theme.sxs
+import com.qiubo.optimaltv.voice.VoiceSearchBus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -194,6 +195,7 @@ fun SearchScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     val searchInput = rememberSystemEditTextHandle()
     var restoredFocus by remember { mutableStateOf(false) }
+    val voiceSearchAtEntry = remember { VoiceSearchBus.hasPendingQuery() }
     val s = rememberUiScale()
     SideEffect {
         SearchDebugBus.currentQuery = query
@@ -220,6 +222,10 @@ fun SearchScreen(nav: NavController) {
     var debugFixtureItems by remember { mutableStateOf<List<VodItem>?>(null) }
     LaunchedEffect(Unit) {
         while (true) {
+            VoiceSearchBus.takeQuery()?.let {
+                searchInput.hideKeyboard()
+                query = it
+            }
             SearchDebugBus.pendingQuery?.let {
                 SearchDebugBus.pendingQuery = null
                 query = it
@@ -421,8 +427,8 @@ fun SearchScreen(nav: NavController) {
                         }
                     },
                     textSizeSp = 48f * s,
-                    autoFocus = returnKey == null,
-                    autoFocusShowsKeyboard = returnKey == null,
+                    autoFocus = returnKey == null && !voiceSearchAtEntry,
+                    autoFocusShowsKeyboard = returnKey == null && !voiceSearchAtEntry,
                     modifier =
                         Modifier
                             .weight(1f)
