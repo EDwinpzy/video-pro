@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.Coil
 import coil.request.SuccessResult
 import com.qiubo.optimaltv.auth.DongpianAuthClient
+import com.qiubo.optimaltv.auth.DongpianAuthException
 import com.qiubo.optimaltv.data.model.posterCandidatesFor
 import com.qiubo.optimaltv.ui.components.InitialFocusEffect
 import kotlinx.coroutines.CancellationException
@@ -68,6 +69,7 @@ internal fun HomeStartupGate(
     var failed by remember(revision) { mutableStateOf(false) }
     var attempt by remember(revision) { mutableIntStateOf(0) }
     var restoreFocusAfterRetry by remember(revision) { mutableStateOf(false) }
+    var reuseCachedTabsOnNextAttempt by remember(revision) { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val contentVisible = entered || (ready && allowContent)
     val startupSurfaceReady = failed || (ready && contentVisible)
@@ -92,6 +94,7 @@ internal fun HomeStartupGate(
             if (event == Lifecycle.Event.ON_START && stopped) {
                 stopped = false
                 ready = false
+                reuseCachedTabsOnNextAttempt = false
                 OtvLog.i("startup foreground_revalidate")
                 attempt++
             }
@@ -101,9 +104,11 @@ internal fun HomeStartupGate(
     }
     LaunchedEffect(revision, attempt) {
         failed = false
+        val revalidateTabs = !reuseCachedTabsOnNextAttempt
+        reuseCachedTabsOnNextAttempt = false
         try {
             val loaded = withTimeoutOrNull(180_000) {
-                prepareHomeEntry()
+                prepareHomeEntry(revalidateTabs)
                 true
             }
             if (loaded == true) {
@@ -115,7 +120,7 @@ internal fun HomeStartupGate(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            OtvLog.w("startup preload failed: ${failure.javaClass.simpleName}")
+            OtvLog.w("startup preload failed: ${failureDiagnostics(failure)}")
             failed = true
         }
     }
@@ -128,6 +133,7 @@ internal fun HomeStartupGate(
         if (!ready && !startupOverlayVisible) {
             StartupLoadingScreen(failed) {
                 restoreFocusAfterRetry = entered
+                reuseCachedTabsOnNextAttempt = true
                 attempt++
             }
         }
@@ -164,7 +170,7 @@ private fun StartupLoadingScreen(
     }
 }
 
-private suspend fun prepareHomeEntry() = coroutineScope {
+private suspend fun prepareHomeEntry(revalidate: Boolean) = coroutineScope {
     val categories = listOf("movie", "tv", "anime", "short", "variety")
     preloadHomeTabs(
         categories = categories,
@@ -173,11 +179,11 @@ private suspend fun prepareHomeEntry() = coroutineScope {
                 onFailure = { attempt, failure ->
                     OtvLog.w(
                         "startup home_tab_retry category=$category attempt=$attempt " +
-                            "reason=${failure.javaClass.simpleName}",
+                            "reason=${failureDiagnostics(failure)}",
                     )
                 },
             ) {
-                val firstRow = Graph.repo.loadHomeFirstSection(category, revalidate = true)
+                val firstRow = Graph.repo.loadHomeFirstSection(category, revalidate = revalidate)
                 OtvLog.i("startup first_section_loaded category=$category items=${firstRow.size}")
                 firstRow
                     .take(STARTUP_FIRST_SECTION_ARTWORK_LIMIT)
@@ -211,6 +217,22 @@ private suspend fun prepareHomeEntry() = coroutineScope {
 /** Enough cards to fill the first visible two-row section on a 1080p TV. */
 private const val STARTUP_FIRST_SECTION_ARTWORK_LIMIT = 12
 private const val STARTUP_HERO_PREVIEW_LIMIT = 5
+
+private fun failureDiagnostics(failure: Exception): String {
+    val authFailure = failure as? DongpianAuthException
+    return buildString {
+        append(failure.javaClass.simpleName)
+        authFailure?.let {
+            append(" status=${it.statusCode}")
+            append(" unauthorized=${it.unauthorized}")
+            if (it.wireCode.isNotBlank()) append(" wire=${it.wireCode}")
+        }
+        failure.message?.take(160)?.takeIf(String::isNotBlank)?.let {
+            append(" message=")
+            append(it)
+        }
+    }
+}
 
 /** Bounded decode waves, no card-count cap or timeout that silently admits partial content. */
 private suspend fun preloadAllHomeArtwork(

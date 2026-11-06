@@ -1,6 +1,7 @@
 package com.qiubo.optimaltv
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -67,6 +68,32 @@ class HomeStartupPreloadTest {
         pending.complete(Unit)
         job.join()
         assertFalse(entered)
+    }
+
+    @Test fun oneTabFailureWaitsForOtherTabsBeforeShowingTheError() = runTest {
+        val siblingFinished = CompletableDeferred<Unit>()
+        var artworkRequested = false
+        var failure: Exception? = null
+
+        try {
+            preloadHomeTabs(
+                categories = listOf("bad", "good"),
+                loadTab = { category ->
+                    if (category == "bad") error("Fictional tab failure")
+                    delay(20)
+                    siblingFinished.complete(Unit)
+                    listOf(category)
+                },
+                loadArtwork = { artworkRequested = true },
+                onTabReady = { _, _ -> },
+            )
+        } catch (caught: Exception) {
+            failure = caught
+        }
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(siblingFinished.isCompleted)
+        assertFalse(artworkRequested)
     }
 
     @Test fun transientTabFailureIsRetriedBeforeShowingTheErrorScreen() = runTest {

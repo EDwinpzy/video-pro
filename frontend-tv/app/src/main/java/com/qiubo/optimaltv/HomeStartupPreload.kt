@@ -2,9 +2,9 @@ package com.qiubo.optimaltv
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.supervisorScope
 
 /** One transient startup request must not strand the whole home screen on the retry UI. */
 internal suspend fun <T> retryStartupLoad(
@@ -34,15 +34,29 @@ internal suspend fun <T> preloadHomeTabs(
     loadTab: suspend (String) -> List<T>,
     loadArtwork: suspend (List<T>) -> Unit,
     onTabReady: (Int, Int) -> Unit,
-) = coroutineScope {
+) = supervisorScope {
     var completed = 0
-    val cards = categories.map { category ->
+    val results = categories.map { category ->
         async {
-            loadTab(category).also {
-                // Children resume on the caller context; progress is serialized there.
-                onTabReady(++completed, categories.size)
+            try {
+                Result.success(
+                    loadTab(category).also {
+                        // Children resume on the caller context; progress is serialized there.
+                        onTabReady(++completed, categories.size)
+                    },
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Result.failure(failure)
             }
         }
-    }.awaitAll().flatten().distinct()
+    }.awaitAll()
+    val firstFailure =
+        results.asSequence()
+            .mapNotNull { it.exceptionOrNull() }
+            .firstOrNull()
+    if (firstFailure != null) throw firstFailure
+    val cards = results.mapNotNull { it.getOrNull() }.flatten().distinct()
     loadArtwork(cards)
 }
