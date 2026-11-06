@@ -34,7 +34,9 @@ object ExitCoordinator {
             activity.startService(serviceIntent.setAction(BackendService.ACTION_SHUTDOWN))
         }
         runCatching { activity.stopService(serviceIntent) }
-        activity.finishAffinity()
+        // finishAffinity only empties the activities; the task itself remains in Recents.
+        // Explicit double-BACK must leave no background task behind.
+        activity.finishAndRemoveTask()
         Handler(Looper.getMainLooper()).postDelayed({
             stopOwnedProcesses(activity)
             android.os.Process.killProcess(android.os.Process.myPid())
