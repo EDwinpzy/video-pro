@@ -40,7 +40,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.animation.core.tween
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -104,6 +103,26 @@ private const val VOD_HERO_TEXT_MAX = 222f
 
 /** hero 播放钮离屏幕底部的安全距离。 */
 private const val VOD_HERO_BTN_BOTTOM = 18f
+
+internal const val HOME_FIRST_SECTION_ITEM_INDEX = 1
+internal const val HOME_SECTION_ITEM_COUNT = 2
+
+internal fun homeSectionHeaderItemIndex(sectionIndex: Int): Int =
+    HOME_FIRST_SECTION_ITEM_INDEX + sectionIndex * HOME_SECTION_ITEM_COUNT
+
+internal suspend fun focusHomeSection(
+    listState: LazyListState,
+    targetIndex: Int,
+    firstCardFocus: FocusRequester,
+): Boolean {
+    listState.animateScrollToItem(homeSectionHeaderItemIndex(targetIndex))
+    withFrameNanos { }
+    repeat(16) {
+        if (runCatching { firstCardFocus.requestFocus() }.isSuccess) return true
+        withFrameNanos { }
+    }
+    return false
+}
 
 /** 影视首页的 TV 分类与三页片库规则。 */
 internal object HomeLibraryUiPolicy {
@@ -185,8 +204,18 @@ fun VodScreen(
     val categoryKey = if (tabKey == "series") "tv" else tabKey
     val recommendations by Graph.repo.homeRecommendationsFlow.collectAsStateWithLifecycle()
     val categorySections = recommendations[com.qiubo.optimaltv.data.repo.VodRepository.categoryCid(categoryKey)].orEmpty()
+    val sectionTitles =
+        remember(categoryKey) { com.qiubo.optimaltv.data.repo.HomeFeedLayout.titles(categoryKey) }
+    val sectionRowStates =
+        remember(categoryKey) {
+            List(sectionTitles.size) { createTvLazyListState() }
+        }
+    val sectionFocusRequesters =
+        remember(categoryKey) {
+            List(sectionTitles.size) { FocusRequester() }
+        }
     LaunchedEffect(categoryKey) {
-        val expectedTitles = com.qiubo.optimaltv.data.repo.HomeFeedLayout.titles(categoryKey)
+        val expectedTitles = sectionTitles
         val currentSections =
             Graph.repo.homeRecommendationsFlow.value[
                 com.qiubo.optimaltv.data.repo.VodRepository.categoryCid(categoryKey)
@@ -285,6 +314,40 @@ fun VodScreen(
             }
         }
     }
+    val sectionMoveInFlight = remember { booleanArrayOf(false) }
+    fun sectionEntries(index: Int): List<VodItem> =
+        categorySections.firstOrNull { it.name == sectionTitles.getOrNull(index) }?.items.orEmpty()
+    fun focusSection(targetIndex: Int) {
+        if (targetIndex !in sectionTitles.indices) return
+        heroFocusScope.launch {
+            try {
+                focusHomeSection(
+                    listState = vodListState,
+                    targetIndex = targetIndex,
+                    firstCardFocus = sectionFocusRequesters[targetIndex],
+                )
+            } finally {
+                sectionMoveInFlight[0] = false
+            }
+        }
+    }
+    fun moveSection(fromIndex: Int, step: Int): Boolean {
+        if (sectionMoveInFlight[0]) return true
+        var target = fromIndex + step
+        while (target in sectionTitles.indices) {
+            if (sectionEntries(target).isNotEmpty()) {
+                sectionMoveInFlight[0] = true
+                focusSection(target)
+                return true
+            }
+            target += step
+        }
+        if (step < 0) {
+            focusHeroFromContent()
+            return true
+        }
+        return false
+    }
     BackHandler {
         exitApp()
     }
@@ -332,7 +395,7 @@ fun VodScreen(
                     )
                 }
             }
-            com.qiubo.optimaltv.data.repo.HomeFeedLayout.titles(categoryKey).forEachIndexed { index, title ->
+            sectionTitles.forEachIndexed { index, title ->
                 val entries = categorySections.firstOrNull { it.name == title }?.items.orEmpty()
                 item(
                     key = "recommendations-header:$index",
@@ -348,6 +411,8 @@ fun VodScreen(
                         nav = nav,
                         entries = entries,
                         scale = s,
+                        rowState = sectionRowStates[index],
+                        firstCardFocus = sectionFocusRequesters[index],
                         rows =
                             if (index == 0 && !com.qiubo.optimaltv.TvPerformanceProfile.isConstrained) {
                                 2
@@ -355,7 +420,8 @@ fun VodScreen(
                                 1
                             },
                         loading = categorySections.none { it.name == title },
-                        onTopRowUp = if (index == 0) ::focusHeroFromContent else null,
+                        onDownFromLastRow = { moveSection(index, 1) },
+                        onUpFromTopRow = { moveSection(index, -1) },
                     )
                 }
             }

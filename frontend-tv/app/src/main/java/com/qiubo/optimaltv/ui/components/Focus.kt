@@ -242,6 +242,12 @@ fun Modifier.dpadFocusable(
     floating: Boolean = false,
     /** 外部落焦句柄（返回落焦）：与导航注册表共用同一节点 */
     externalFocusRequester: FocusRequester? = null,
+    /**
+     * Programmatic focus handle that does not force the legacy navigation
+     * registry. Used by lazy rows to focus a specific card after the outer list
+     * has scrolled the row into composition.
+     */
+    focusHandle: FocusRequester? = null,
     /** 非空 = 节点归入命名分组（播放器浮窗等）：引擎只在本组内找候选，绝不逃逸 */
     navGroup: String? = null,
     /** 节点级方向语义覆盖：返回 true = 已处理（消费），false = 落回几何搜索 */
@@ -267,6 +273,8 @@ fun Modifier.dpadFocusable(
         }
 
     if (TvPerformanceProfile.isConstrained && !needsLegacyFocusRegistry) {
+        val resolvedFocusRequester =
+            remember(focusHandle) { focusHandle ?: FocusRequester() }
         val interaction = remember { MutableInteractionSource() }
         var focused by remember { mutableStateOf(false) }
         val focusTop = remember { floatArrayOf(Float.NaN) }
@@ -291,6 +299,7 @@ fun Modifier.dpadFocusable(
                     group = navGroup,
                 )
             }
+            .focusRequester(resolvedFocusRequester)
             .clickable(
                 enabled = enabled,
                 interactionSource = interaction,
@@ -356,8 +365,8 @@ fun Modifier.dpadFocusable(
         null
     }
     val bandId = remember { OtvNav.newId() }
-    val bandNode = remember(externalFocusRequester) {
-        OtvNav.Node(externalFocusRequester ?: FocusRequester(), floating, navGroup)
+    val bandNode = remember(externalFocusRequester, focusHandle) {
+        OtvNav.Node(focusHandle ?: externalFocusRequester ?: FocusRequester(), floating, navGroup)
     }
     // 本实例是否曾持有焦点（跨重组稳定）：销毁时曾是焦点节点 → 触发消失补焦检查
     val wasFocusedOnce = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
