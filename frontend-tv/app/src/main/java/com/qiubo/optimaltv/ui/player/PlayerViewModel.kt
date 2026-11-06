@@ -16,7 +16,7 @@ import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.prefs.AspectMode
 import com.qiubo.optimaltv.data.prefs.DanmakuDisplayArea
 import com.qiubo.optimaltv.data.prefs.SettingsStore
-import com.qiubo.optimaltv.data.prefs.SkipSegmentsMode
+import com.qiubo.optimaltv.data.prefs.SkipSegmentSettings
 import com.qiubo.optimaltv.data.repo.LiveSourcePolicy
 import com.qiubo.optimaltv.data.repo.SelectedSourceRefreshException
 import com.qiubo.optimaltv.data.repo.VodRepository
@@ -361,7 +361,8 @@ data class PlayerUiState(
     val danmakuFontScale: Float = 1f,
     val danmakuOpacity: Float = 1f,
     val danmakuScrollSpeed: Float = 1f,
-    val skipSegmentsMode: SkipSegmentsMode = SkipSegmentsMode.OFF,
+    val skipIntroSeconds: Int = 0,
+    val skipOutroSeconds: Int = 0,
     val danmakuAvailable: Boolean = false,
     val danmakuLoading: Boolean = false,
     val danmakuStatus: String = "",
@@ -712,7 +713,8 @@ class PlayerViewModel(
                     danmakuFontScale = preferences.danmakuFontScale,
                     danmakuOpacity = preferences.danmakuOpacity,
                     danmakuScrollSpeed = preferences.danmakuScrollSpeed,
-                    skipSegmentsMode = SkipSegmentsMode.of(preferences.skipSegmentsOrdinal),
+                    skipIntroSeconds = preferences.skipIntroSeconds,
+                    skipOutroSeconds = preferences.skipOutroSeconds,
                 )
         }
         if (autoBoot) sourceBootJob = viewModelScope.launch { boot() }
@@ -1184,7 +1186,7 @@ class PlayerViewModel(
     private fun maybeApplyIntroSkip(st: com.qiubo.optimaltv.playback.EngineUiState) {
         if (skipIntroApplied || _ui.value.isLive || _ui.value.isMovie) return
         if (!SkipSegmentPolicy.shouldApplyIntro(
-                mode = _ui.value.skipSegmentsMode,
+                skipIntroSeconds = _ui.value.skipIntroSeconds,
                 startPositionMs = currentSessionStartMs,
                 durationMs = st.durationMs,
                 alreadyApplied = skipIntroApplied,
@@ -1193,7 +1195,7 @@ class PlayerViewModel(
             if (currentSessionStartMs >= 1_000L) skipIntroApplied = true
             return
         }
-        val target = SkipSegmentPolicy.introSkipMs(st.durationMs)
+        val target = SkipSegmentPolicy.introSkipMs(_ui.value.skipIntroSeconds, st.durationMs)
         if (target <= 0L || st.positionMs >= target - 500L) {
             skipIntroApplied = true
             return
@@ -1216,7 +1218,14 @@ class PlayerViewModel(
             episodeCount = ui.epCount,
         ) ?: return
         if (preloadedNext?.episodeIndex == next || preloadAttemptedEpisode == next) return
-        if (!NextEpisodePreloadPolicy.shouldStart(st.positionMs, st.durationMs, hasNextEpisode = true)) return
+        if (!NextEpisodePreloadPolicy.shouldStart(
+                positionMs = st.positionMs,
+                durationMs = st.durationMs,
+                introSkipSeconds = ui.skipIntroSeconds,
+                outroSkipSeconds = ui.skipOutroSeconds,
+                hasNextEpisode = true,
+            )
+        ) return
         startNextEpisodePreload(next)
     }
 
@@ -1232,7 +1241,7 @@ class PlayerViewModel(
             episodeCount = ui.epCount,
         ) ?: return
         if (!SkipSegmentPolicy.shouldSkipOutro(
-                mode = ui.skipSegmentsMode,
+                skipOutroSeconds = ui.skipOutroSeconds,
                 positionMs = st.positionMs,
                 durationMs = st.durationMs,
                 hasNextEpisode = true,
@@ -3744,9 +3753,17 @@ class PlayerViewModel(
         touch()
     }
 
-    fun setSkipSegmentsMode(mode: SkipSegmentsMode) {
-        _ui.value = _ui.value.copy(skipSegmentsMode = mode)
-        viewModelScope.launch { settings.setSkipSegments(mode.ordinal) }
+    fun setSkipIntroSeconds(seconds: Int) {
+        val normalized = SkipSegmentSettings.clamp(seconds)
+        _ui.value = _ui.value.copy(skipIntroSeconds = normalized)
+        viewModelScope.launch { settings.setSkipIntroSeconds(normalized) }
+        touch()
+    }
+
+    fun setSkipOutroSeconds(seconds: Int) {
+        val normalized = SkipSegmentSettings.clamp(seconds)
+        _ui.value = _ui.value.copy(skipOutroSeconds = normalized)
+        viewModelScope.launch { settings.setSkipOutroSeconds(normalized) }
         touch()
     }
 

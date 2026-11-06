@@ -55,7 +55,8 @@ data class AppSettings(
     val danmakuFontScale: Float = 1.0f,
     val danmakuOpacity: Float = 1.0f,
     val danmakuScrollSpeed: Float = 1.0f,
-    val skipSegmentsOrdinal: Int = SkipSegmentsMode.OFF.ordinal,
+    val skipIntroSeconds: Int = 0,
+    val skipOutroSeconds: Int = 0,
 )
 
 class SettingsStore(private val context: Context) {
@@ -71,7 +72,8 @@ class SettingsStore(private val context: Context) {
         val DANMAKU_FONT_SCALE = floatPreferencesKey("danmaku_font_scale")
         val DANMAKU_OPACITY = floatPreferencesKey("danmaku_opacity")
         val DANMAKU_SCROLL_SPEED = floatPreferencesKey("danmaku_scroll_speed")
-        val SKIP_SEGMENTS = intPreferencesKey("skip_segments")
+        val SKIP_INTRO_SECONDS = intPreferencesKey("skip_intro_seconds")
+        val SKIP_OUTRO_SECONDS = intPreferencesKey("skip_outro_seconds")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -87,8 +89,8 @@ class SettingsStore(private val context: Context) {
             danmakuFontScale = (p[K.DANMAKU_FONT_SCALE] ?: 1.0f).coerceIn(0.75f, 1.25f),
             danmakuOpacity = (p[K.DANMAKU_OPACITY] ?: 1.0f).coerceIn(0.3f, 1.0f),
             danmakuScrollSpeed = (p[K.DANMAKU_SCROLL_SPEED] ?: 1.0f).coerceIn(0.5f, 2.0f),
-            skipSegmentsOrdinal =
-                SkipSegmentsMode.of(p[K.SKIP_SEGMENTS] ?: SkipSegmentsMode.OFF.ordinal).ordinal,
+            skipIntroSeconds = SkipSegmentSettings.clamp(p[K.SKIP_INTRO_SECONDS] ?: 0),
+            skipOutroSeconds = SkipSegmentSettings.clamp(p[K.SKIP_OUTRO_SECONDS] ?: 0),
         )
     }
 
@@ -109,8 +111,10 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[K.DANMAKU_OPACITY] = opacity.coerceIn(0.3f, 1.0f) }
     suspend fun setDanmakuScrollSpeed(speed: Float) =
         context.dataStore.edit { it[K.DANMAKU_SCROLL_SPEED] = speed.coerceIn(0.5f, 2.0f) }
-    suspend fun setSkipSegments(ordinal: Int) =
-        context.dataStore.edit { it[K.SKIP_SEGMENTS] = SkipSegmentsMode.of(ordinal).ordinal }
+    suspend fun setSkipIntroSeconds(seconds: Int) =
+        context.dataStore.edit { it[K.SKIP_INTRO_SECONDS] = SkipSegmentSettings.clamp(seconds) }
+    suspend fun setSkipOutroSeconds(seconds: Int) =
+        context.dataStore.edit { it[K.SKIP_OUTRO_SECONDS] = SkipSegmentSettings.clamp(seconds) }
 
     // ---- 线路记忆（技术方案 §3.2-3：每部影片上次成功的线路，下次直选）----
     private fun lineKey(vodId: String) = stringPreferencesKey("line:$vodId")

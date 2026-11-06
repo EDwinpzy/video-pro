@@ -63,7 +63,7 @@ import com.qiubo.optimaltv.TvPerformanceProfile
 import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.data.model.formatTime
 import com.qiubo.optimaltv.data.prefs.DanmakuDisplayArea
-import com.qiubo.optimaltv.data.prefs.SkipSegmentsMode
+import com.qiubo.optimaltv.data.prefs.SkipSegmentSettings
 import com.qiubo.optimaltv.ui.components.NAV_DOWN
 import com.qiubo.optimaltv.ui.components.NAV_LEFT
 import com.qiubo.optimaltv.ui.components.NAV_RIGHT
@@ -165,6 +165,24 @@ private data class SidebarSettingRow(
     val onSelect: (Int) -> Unit,
 )
 
+private fun skipOptions(seconds: Int): List<String> =
+    listOf(
+        "-${SkipSegmentSettings.COARSE_STEP_SECONDS}s",
+        "-${SkipSegmentSettings.FINE_STEP_SECONDS}s",
+        if (seconds <= 0) "关" else "${seconds}秒",
+        "+${SkipSegmentSettings.FINE_STEP_SECONDS}s",
+        "+${SkipSegmentSettings.COARSE_STEP_SECONDS}s",
+    )
+
+private fun steppedSkipSeconds(seconds: Int, column: Int): Int =
+    when (column) {
+        0 -> seconds - SkipSegmentSettings.COARSE_STEP_SECONDS
+        1 -> seconds - SkipSegmentSettings.FINE_STEP_SECONDS
+        3 -> seconds + SkipSegmentSettings.FINE_STEP_SECONDS
+        4 -> seconds + SkipSegmentSettings.COARSE_STEP_SECONDS
+        else -> seconds
+    }
+
 /**
  * Accepted playback sidebar: fixed film header, three tabs, compact settings and
  * a two-column source list. It intentionally omits duplicate status/help copy.
@@ -213,11 +231,22 @@ internal fun ClassicMorePanel(
     val settingRows =
         listOf(
             SidebarSettingRow(
-                label = "跳过片头片尾",
-                options = SkipSegmentsMode.menuEntries.map { it.label },
-                selectedIndex =
-                    SkipSegmentsMode.menuEntries.indexOf(ui.skipSegmentsMode).coerceAtLeast(0),
-                onSelect = { vm.setSkipSegmentsMode(SkipSegmentsMode.menuEntries[it]) },
+                label = "片头跳过",
+                options = skipOptions(ui.skipIntroSeconds),
+                selectedIndex = 2,
+                onSelect = { column ->
+                    val next = steppedSkipSeconds(ui.skipIntroSeconds, column)
+                    if (next != ui.skipIntroSeconds) vm.setSkipIntroSeconds(next)
+                },
+            ),
+            SidebarSettingRow(
+                label = "片尾跳过",
+                options = skipOptions(ui.skipOutroSeconds),
+                selectedIndex = 2,
+                onSelect = { column ->
+                    val next = steppedSkipSeconds(ui.skipOutroSeconds, column)
+                    if (next != ui.skipOutroSeconds) vm.setSkipOutroSeconds(next)
+                },
             ),
             SidebarSettingRow(
                 label = "播放倍速",
@@ -288,7 +317,7 @@ internal fun ClassicMorePanel(
                     row = ui.epIndex / SidebarEpisodeColumns,
                     column = ui.epIndex % SidebarEpisodeColumns,
                 )
-            SidebarTab.Settings -> SidebarStart(row = 0, column = speedIndex)
+            SidebarTab.Settings -> SidebarStart(row = 0, column = 2)
             SidebarTab.Sources ->
                 SidebarStart(
                     row = ui.activeLine / SidebarSourceColumns,
