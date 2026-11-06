@@ -1,19 +1,44 @@
 # AGENTS.md
 
-> **Current TV release (2026-11-05):** `frontend-tv/` is the only official TV
-> application and release target (`0.3.1`, `versionCode 7`,
-> `com.dongpiandi.videopro`). The root `app-tv`/`design-tv` KMP tree is
-> experimental; never version, build for distribution, or publish it. Read
-> `docs/repository-layout.md` before touching TV source or version fields.
+> **Official TV app: `frontend-tv/` only.** It is the sole release target
+> (`0.3.1`, `versionCode 7`, `com.dongpiandi.videopro`). Root `app-tv` /
+> `design-tv` / `dongpian-data` are experimental reference code: never version,
+> build for distribution, or publish them. Read `docs/repository-layout.md`
+> before touching TV source or version fields.
 
 Guidance for coding agents (and humans) working in this repository. Keep it short and current; details live in `docs/`.
+
+## Agent quick card
+
+- **Official TV source:** `frontend-tv/app` (standalone Gradle project).
+- **Official TV commands** (run from `frontend-tv`):
+
+  ```powershell
+  .\gradlew.bat :app:compileDebugKotlin
+  .\gradlew.bat :app:testDebugUnitTest
+  .\gradlew.bat :app:lintDebug :app:assembleDebug
+  ```
+
+- **Minimal TV verification:** compile + the nearest unit test. Add
+  `:app:lintDebug` and `:app:assembleDebug` before handoff. Device tests only
+  for D-pad/focus, playback, permissions, or other device-only behaviour.
+- **Do not use root Gradle to verify TV changes.** Root tasks do not cover
+  `frontend-tv`; a green root build says nothing about the official app.
+- **Root KMP commands** are for the inherited mobile/experimental tree only.
+  The root build needs an Android SDK path in `local.properties` or
+  `ANDROID_HOME`; a missing SDK is an environment problem, not a source failure.
+- **Skip generated/local directories when searching:** `build/`, `.gradle/`,
+  `.kotlin/`, `frontend-tv/build/`, `frontend-tv/.gradle/`, `frontend-tv/dist/`,
+  `.worktrees/`.
+- **Version source:** `frontend-tv/app/build.gradle`.
 
 ## Project
 
 Jellystack is a privacy-focused Jellyfin + Seerr client written in Kotlin Multiplatform with Compose.
 
 - **Android phone/tablet** (`app-android`) – stable, published on Google Play.
-- **Android TV / Google TV / Fire TV** (`app-tv`) – GMS-free, separate Compose for TV UI.
+- **Android TV / Google TV / Fire TV** (`frontend-tv/app`) – official GMS-free TV app.
+  Root `app-tv` is an experimental KMP reference and is not released.
 - **iOS** (`app-ios`) – experimental, not distributed, only built by a manual workflow.
 
 No Jellystack backend exists: the app talks only to servers the user configures.
@@ -22,16 +47,18 @@ No Jellystack backend exists: the app talks only to servers the user configures.
 
 | Module | What goes here |
 | --- | --- |
+| `frontend-tv/` | **Official** Android TV app (standalone Gradle build). All TV product code and resources go here. |
+| `frontend-tv/voice-core`, `frontend-tv/voice-helper` | Vendor speech integration and optional voice helper used by the official TV app. |
 | `shared-network` | Ktor clients and transport DTOs for Jellyfin and Seerr. No UI or persistence. |
 | `shared-core` | Repositories, coordinators, settings, auth, secure storage, downloads, domain models, Koin core module (`di/Modules.kt`). |
 | `shared-database` | SQLDelight schema (`src/commonMain/sqldelight`), numbered migrations (`migrations/N.sqm`), SQL store implementations. |
 | `players` | Playback resolution, `PlaybackController`, segments, continuation, SyncPlay, Cast abstraction. Shared by phone and TV. |
 | `players-cast-google` | Google Cast implementation. Mobile only; must never reach the TV app. |
 | `design` | Phone/tablet Compose UI and Compose resources. Composition root: `JellystackRoot.kt`. |
-| `design-tv` | Compose for TV UI. Composition root: `TvJellystackRoot.kt`. Does not depend on `design`. |
+| `design-tv` | Experimental KMP Compose for TV UI. Composition root: `TvJellystackRoot.kt`. Reference only; not released. |
 | `design-screenshots` | Screenshot tests for `design` with checked-in reference PNGs. |
-| `design-tv-screenshots` | Screenshot tests for the production `design-tv` components (fixtures in `TvGoldenFixtures.kt`). |
-| `app-android`, `app-tv`, `app-ios` | Thin platform hosts: Activity/lifecycle, permissions, platform Koin module, packaging. |
+| `design-tv-screenshots` | Screenshot tests for the experimental `design-tv` components (fixtures in `TvGoldenFixtures.kt`). Not the official TV gate. |
+| `app-android`, `app-tv`, `app-ios` | Thin platform hosts: Activity/lifecycle, permissions, platform Koin module, packaging. Root `app-tv` is experimental; the official TV host is `frontend-tv/app`. |
 | `testing`, `tools` | JVM-only leftovers (unused fixtures module, API generator scaffold). Do not build on them without reading `docs/tech-debt.md`. |
 
 Dependency direction: `app-* → design / design-tv → players → shared-core → shared-network`; `shared-database → shared-core`. Code needed by both phone and TV UI belongs in `players` or `shared-core`, not in a UI module. See `docs/architecture.md`.
@@ -40,11 +67,13 @@ Naming quirks to respect (not to "fix" in passing): library packages are `dev.je
 
 ## Commands
 
-JDK 17, Android SDK 36. Always run Gradle from the repository root.
+JDK 17, Android SDK 36. Run **root** Gradle commands from the repository root;
+the official TV app is a separate build under `frontend-tv` (see the quick card
+above).
 
 ```bash
 ./gradlew :app-android:assembleDebug          # phone build
-./gradlew :app-tv:assembleDebug               # TV build
+./gradlew :app-tv:assembleDebug               # experimental KMP TV only; never a release artifact
 ./gradlew spotlessApply                       # format before committing
 ./gradlew spotlessCheck detekt                # static checks
 ./gradlew :<module>:testDebugUnitTest         # unit tests of one module
@@ -54,6 +83,10 @@ JDK 17, Android SDK 36. Always run Gradle from the repository root.
 ```
 
 The full CI gate is listed in `docs/building.md` and mirrors `.github/workflows/ci.yml`. Before finishing a change, run `spotlessCheck detekt` plus the unit tests of every module you touched; for UI changes also validate screenshots.
+
+For `frontend-tv`, run its own wrapper from `frontend-tv`; root
+`spotlessCheck`/`detekt` and root tests do not validate it. Its full gate is in
+`frontend-tv/README.md`.
 
 ## Architecture rules
 
@@ -77,6 +110,10 @@ The full CI gate is listed in `docs/building.md` and mirrors `.github/workflows/
 ## Testing policy
 
 Write tests for behaviour that can break: coordinators, reducers, resolvers, request/permission rules, focus logic, migrations, HTTP contracts (MockEngine).
+
+`frontend-tv` is not covered by root tests. For TV changes, run its unit tests
+from `frontend-tv`; root module tests only cover the KMP mobile/experimental
+tree.
 
 Do **not** add tests that:
 
@@ -108,6 +145,10 @@ Style: camelCase test names, `runTest` for coroutines, no real dispatchers or `d
 - `gradle.properties` sets `org.gradle.workers.max=1` for Windows file-locking; builds are slower than necessary on Linux/macOS.
 - `rootProject.name` determines the generated Compose resources package (`jellystack_mobile.design.generated.resources`); renaming it breaks every resource import.
 - `design-tv` and `app-tv` instrumented tests run in CI on a TV emulator but are non-blocking, because that emulator crashes at random (`docs/tech-debt.md` 2.18). Run them on a TV emulator or device locally when changing TV focus behaviour and before every TV release.
+- The root KMP build and `frontend-tv` are separate Gradle builds. Root
+  `:app-tv:*` tasks do not build or test the official TV app.
+- `frontend-tv` sets `abortOnError false` for lint; read the lint report even
+  when `lintDebug` succeeds.
 
 ## More
 
