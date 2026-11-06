@@ -1,13 +1,19 @@
 package com.qiubo.optimaltv.ui.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
@@ -22,6 +28,7 @@ import com.qiubo.optimaltv.ui.components.dpadFocusable
 import com.qiubo.optimaltv.ui.theme.OtvColors
 import com.qiubo.optimaltv.ui.theme.sx
 import com.qiubo.optimaltv.ui.theme.sxs
+import kotlinx.coroutines.launch
 import java.net.URLEncoder
 
 @Composable
@@ -47,10 +54,13 @@ internal fun HomeRecommendationHeader(
  * off-screen poster composition trees during every tab switch.
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun HomeRecommendationRow(
     nav: NavController,
     entries: List<VodItem>,
     scale: Float,
+    /** Optional handle for programmatically focusing the first card. */
+    firstCardFocus: FocusRequester? = null,
     rows: Int = 1,
     loading: Boolean = false,
     onTopRowUp: (() -> Unit)? = null,
@@ -59,6 +69,7 @@ internal fun HomeRecommendationRow(
     val posterSize = remember(context.resources.displayMetrics.widthPixels) {
         TvImageRequestSpec.posterSize(context.resources.displayMetrics.widthPixels)
     }
+    val revealScope = rememberCoroutineScope()
     Column(Modifier.fillMaxWidth().padding(bottom = 20f.sx(scale))) {
         if (entries.isEmpty()) {
             Text(if (loading) "正在加载…" else "暂无内容", color = OtvColors.White55, fontSize = 24f.sxs(scale), modifier = Modifier.padding(horizontal = 86f.sx(scale)))
@@ -74,21 +85,35 @@ internal fun HomeRecommendationRow(
                     items = columns,
                     key = { index, _ -> index },
                     contentType = { _, _ -> "home-poster-column" },
-                ) { _, column ->
+                ) { columnIndex, column ->
                     Column(verticalArrangement = Arrangement.spacedBy(20f.sx(scale))) {
                         column.forEachIndexed { rowIndex, entry ->
                             val topRowUp =
                                 onTopRowUp.takeIf { rowIndex == 0 }
-                            Column(Modifier.width(232f.sx(scale))) {
+                            val cardReveal = remember(entry.id) { BringIntoViewRequester() }
+                            Column(
+                                Modifier
+                                    .width(232f.sx(scale))
+                                    .bringIntoViewRequester(cardReveal),
+                            ) {
                                 RemotePoster(
                                     url = entry.posterUrl,
                                     title = entry.title,
                                     seed = entry.id.hashCode(),
                                     imageSize = posterSize,
                                     modifier = Modifier
+                                        .onFocusChanged {
+                                            if (it.isFocused) {
+                                                revealScope.launch { cardReveal.bringIntoView() }
+                                            }
+                                        }
                                         .dpadFocusable(
                                             scaleFocused = CARD_FOCUS_SCALE,
                                             allowFocusScaleOnConstrained = true,
+                                            externalFocusRequester =
+                                                firstCardFocus.takeIf {
+                                                    columnIndex == 0 && rowIndex == 0
+                                                },
                                             onClick = {
                                                 nav.navigate("detail/" + URLEncoder.encode(entry.id, "UTF-8"))
                                             },
