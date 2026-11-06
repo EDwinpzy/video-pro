@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 data class TabItem(val key: String, val label: String)
 
 val MAIN_TABS = listOf(
+    TabItem(HOME_TAB_KEY, "首页"),
     TabItem("movie", "电影"),
     TabItem("series", "电视剧"),
     TabItem("anime", "国漫"),
