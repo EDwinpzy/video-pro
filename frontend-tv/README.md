@@ -86,6 +86,22 @@ selection. Ordinary debug builds remain debuggable. The acceptance APK cannot us
 `run-as`, and debug-only route/fixture injection is disabled. Measure startup and
 frames on this variant separately from debuggable builds; do not mix their results.
 
+## Voice search intent
+
+The global voice helper and other same-signature assistants can open the search
+flow through `VoiceSearchActivity`:
+
+- Action: `com.dongpiandi.videopro.action.OPEN_SEARCH`
+- Required permission: `com.dongpiandi.videopro.permission.VOICE_SEARCH`
+  (`signature`)
+- Extra `query`: normalized search text, limited to 80 characters
+- Extra `openFirstResult`: optional Boolean, default `false`
+
+Use `openFirstResult=true` only for explicit view/play commands such as
+“播放” or “我要看”. Those requests may open the first result after it loads.
+Explicit search commands such as “搜索” or “帮我找” must leave the user on the
+result page.
+
 ## Remote focus ownership
 
 Ordinary D-pad navigation and confirmation are handled by Compose focus and
