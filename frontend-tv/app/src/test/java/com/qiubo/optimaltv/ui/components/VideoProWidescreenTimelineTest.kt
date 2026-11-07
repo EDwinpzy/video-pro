@@ -6,9 +6,9 @@ import org.junit.Test
 class VideoProWidescreenTimelineTest {
 
     @Test
-    fun `half speed finishes the motion in three point eight seconds`() {
-        assertEquals(3_800L, VideoProWidescreenTimeline.wallMotionDurationMillis)
-        assertEquals(9_000L, VideoProWidescreenTimeline.previewLoopDurationMillis)
+    fun `motion finishes in one point five seconds`() {
+        assertEquals(1_500L, VideoProWidescreenTimeline.wallMotionDurationMillis)
+        assertEquals(3_552L, VideoProWidescreenTimeline.previewLoopDurationMillis)
     }
 
     @Test
