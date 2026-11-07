@@ -66,6 +66,7 @@ import com.qiubo.optimaltv.ui.theme.sx
 import com.qiubo.optimaltv.ui.theme.sxs
 import com.qiubo.optimaltv.voice.VoiceSearchBus
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
@@ -196,6 +197,8 @@ fun SearchScreen(nav: NavController) {
     val searchInput = rememberSystemEditTextHandle()
     var restoredFocus by remember { mutableStateOf(false) }
     val voiceSearchAtEntry = remember { VoiceSearchBus.hasPendingQuery() }
+    var voiceImmediateQuery by remember { mutableStateOf<String?>(null) }
+    var openFirstResultQuery by remember { mutableStateOf<String?>(null) }
     val s = rememberUiScale()
     SideEffect {
         SearchDebugBus.currentQuery = query
@@ -218,16 +221,26 @@ fun SearchScreen(nav: NavController) {
         }
     }
 
+    // 语音请求使用事件直达，避免搜索页再轮询 200ms；播放类命令允许首项自动打开。
+    LaunchedEffect(Unit) {
+        VoiceSearchBus.updates.collectLatest {
+            VoiceSearchBus.takeRequest()?.let { request ->
+                searchInput.hideKeyboard()
+                voiceImmediateQuery = request.query
+                openFirstResultQuery = request.query.takeIf { request.openFirstResult }
+                query = request.query
+            }
+        }
+    }
+
     // 调试注入：adb intent 注入查询词及确定数量的结果，供模拟器实测焦点导航。
     var debugFixtureItems by remember { mutableStateOf<List<VodItem>?>(null) }
     LaunchedEffect(Unit) {
         while (true) {
-            VoiceSearchBus.takeQuery()?.let {
-                searchInput.hideKeyboard()
-                query = it
-            }
             SearchDebugBus.pendingQuery?.let {
                 SearchDebugBus.pendingQuery = null
+                voiceImmediateQuery = null
+                openFirstResultQuery = null
                 query = it
             }
             if (BuildConfig.DEBUG) {
@@ -253,7 +266,7 @@ fun SearchScreen(nav: NavController) {
         }
         remoteLoading = false
         if (searchable == lastSearched) return@LaunchedEffect
-        delay(250)
+        if (searchable != voiceImmediateQuery) delay(250)
         if (!isActive) return@LaunchedEffect
         remoteLoading = true
         try {
@@ -293,6 +306,14 @@ fun SearchScreen(nav: NavController) {
     }
     val resultsGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     var focusedResultId by remember { mutableStateOf<String?>(null) }
+
+    // “播放 XX 电影”只自动进入第一条候选；“搜索 XX”仍停留在结果页。
+    LaunchedEffect(shown, openFirstResultQuery) {
+        val requestedQuery = openFirstResultQuery ?: return@LaunchedEffect
+        if (requestedQuery != searchable || shown.isEmpty()) return@LaunchedEffect
+        openFirstResultQuery = null
+        nav.navigate("detail/" + URLEncoder.encode(shown.first().id, "UTF-8"))
+    }
 
     // 已提交搜索词变化后从全部分类和首行结果开始；否则 rememberSaveable 的旧分类和
     // 网格滚动位置会让首卡不在组合树里，分类栏 DOWN 发出的焦点请求就落空。
@@ -398,7 +419,11 @@ fun SearchScreen(nav: NavController) {
                 Spacer(Modifier.width(24f.sx(s)))
                 SystemEditText(
                     value = query,
-                    onValueChange = { query = it },
+                    onValueChange = {
+                        voiceImmediateQuery = null
+                        openFirstResultQuery = null
+                        query = it
+                    },
                     hint = "搜索影片、演员",
                     handle = searchInput,
                     imeAction = EditorInfo.IME_ACTION_SEARCH,

@@ -25,6 +25,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import com.qiubo.optimaltv.ui.components.TvInteractionMotion
 import com.qiubo.optimaltv.ui.components.HOME_CONTENT_TAB_KEYS
@@ -268,12 +270,18 @@ private fun AppRoot(
     val nav = rememberNavController()
     val navigationMotion = TvPerformanceProfile.navigationMotionEnabled
 
+    // 语音搜索使用事件直达，避免轮询把“打开搜索页”额外延迟最多 200ms。
+    LaunchedEffect(Unit) {
+        com.qiubo.optimaltv.voice.VoiceSearchBus.updates.collectLatest {
+            com.qiubo.optimaltv.voice.VoiceSearchBus.takeNavigationRequest()?.let {
+                nav.navigate("search") { launchSingleTop = true }
+            }
+        }
+    }
+
     // 调试直达播放页：debug 广播 → pending 消费（详见 DebugNavBus；release 无写入方）
     LaunchedEffect(Unit) {
         while (true) {
-            com.qiubo.optimaltv.voice.VoiceSearchBus.takeNavigationQuery()?.let {
-                nav.navigate("search") { launchSingleTop = true }
-            }
             DebugNavBus.pendingDetailId?.let { id ->
                 DebugNavBus.pendingDetailId = null
                 nav.navigate("detail/" + java.net.URLEncoder.encode(id, "UTF-8"))
@@ -296,7 +304,7 @@ private fun AppRoot(
                     )
                 }
             }
-            kotlinx.coroutines.delay(200)
+            delay(200)
         }
     }
 

@@ -13,9 +13,9 @@ import com.qiubo.optimaltv.MainActivity
 class VoiceSearchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val query = VoiceSearchContract.queryFromIntent(intent)
-        if (query != null) {
-            VoiceSearchBus.submit(query)
+        val request = VoiceSearchContract.requestFromIntent(intent)
+        if (request != null) {
+            VoiceSearchBus.submit(request)
             startActivity(
                 Intent(this, MainActivity::class.java).apply {
                     addFlags(

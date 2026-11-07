@@ -21,19 +21,20 @@ class VoiceSearchBusTest {
 
     @Test
     fun querySurvivesNavigationUntilTheSearchScreenConsumesIt() {
-        assertTrue(VoiceSearchBus.submit("流浪地球"))
+        val request = VoiceSearchRequest("流浪地球", openFirstResult = true)
+        assertTrue(VoiceSearchBus.submit(request))
         assertTrue(VoiceSearchBus.hasPendingQuery())
-        assertEquals("流浪地球", VoiceSearchBus.takeNavigationQuery())
-        assertNull(VoiceSearchBus.takeNavigationQuery())
+        assertEquals(request, VoiceSearchBus.takeNavigationRequest())
+        assertNull(VoiceSearchBus.takeNavigationRequest())
         assertTrue(VoiceSearchBus.hasPendingQuery())
-        assertEquals("流浪地球", VoiceSearchBus.takeQuery())
+        assertEquals(request, VoiceSearchBus.takeRequest())
         assertFalse(VoiceSearchBus.hasPendingQuery())
-        assertNull(VoiceSearchBus.takeQuery())
+        assertNull(VoiceSearchBus.takeRequest())
     }
 
     @Test
     fun rejectsBlankQueries() {
-        assertFalse(VoiceSearchBus.submit("  "))
+        assertFalse(VoiceSearchBus.submit(VoiceSearchRequest("  ", openFirstResult = true)))
         assertFalse(VoiceSearchBus.hasPendingQuery())
     }
 }

@@ -1,10 +1,19 @@
 package com.qiubo.optimaltv.voice
 
 import android.content.Intent
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+internal data class VoiceSearchRequest(
+    val query: String,
+    val openFirstResult: Boolean,
+)
 
 internal object VoiceSearchContract {
     const val ACTION_OPEN_SEARCH = "com.dongpiandi.videopro.action.OPEN_SEARCH"
     const val EXTRA_QUERY = "query"
+    const val EXTRA_OPEN_FIRST_RESULT = "openFirstResult"
     const val PERMISSION = "com.dongpiandi.videopro.permission.VOICE_SEARCH"
     const val MAX_QUERY_LENGTH = 80
 
@@ -18,15 +27,19 @@ internal object VoiceSearchContract {
         return cleaned.take(MAX_QUERY_LENGTH).takeIf(String::isNotEmpty)
     }
 
-    fun queryFromIntent(intent: Intent?): String? {
+    fun requestFromIntent(intent: Intent?): VoiceSearchRequest? {
         if (intent?.action != ACTION_OPEN_SEARCH) return null
-        return normalizeQuery(intent.getStringExtra(EXTRA_QUERY))
+        val query = normalizeQuery(intent.getStringExtra(EXTRA_QUERY)) ?: return null
+        return VoiceSearchRequest(
+            query = query,
+            openFirstResult = intent.getBooleanExtra(EXTRA_OPEN_FIRST_RESULT, false),
+        )
     }
 }
 
 internal object VoiceSearchBus {
     private data class PendingRequest(
-        val query: String,
+        val request: VoiceSearchRequest,
         val createdAtMs: Long,
     )
 
@@ -34,17 +47,25 @@ internal object VoiceSearchBus {
 
     private var pending: PendingRequest? = null
     private var navigationPending = false
+    private val revisions = MutableStateFlow(0L)
+
+    val updates: StateFlow<Long> = revisions.asStateFlow()
 
     @Synchronized
-    fun submit(query: String): Boolean {
-        val normalized = VoiceSearchContract.normalizeQuery(query) ?: return false
-        pending = PendingRequest(normalized, System.currentTimeMillis())
+    fun submit(request: VoiceSearchRequest): Boolean {
+        val normalized = VoiceSearchContract.normalizeQuery(request.query) ?: return false
+        pending =
+            PendingRequest(
+                request.copy(query = normalized),
+                System.currentTimeMillis(),
+            )
         navigationPending = true
+        revisions.value = revisions.value + 1
         return true
     }
 
     @Synchronized
-    fun takeNavigationQuery(): String? {
+    fun takeNavigationRequest(): VoiceSearchRequest? {
         val request = pending ?: return null
         if (isExpired(request)) {
             clear()
@@ -52,14 +73,14 @@ internal object VoiceSearchBus {
         }
         if (!navigationPending) return null
         navigationPending = false
-        return request.query
+        return request.request
     }
 
     @Synchronized
-    fun takeQuery(): String? {
+    fun takeRequest(): VoiceSearchRequest? {
         val request = pending ?: return null
         clear()
-        return request.query.takeUnless { isExpired(request) }
+        return request.request.takeUnless { isExpired(request) }
     }
 
     @Synchronized
@@ -75,6 +96,7 @@ internal object VoiceSearchBus {
     @Synchronized
     fun resetForTest() {
         clear()
+        revisions.value = 0L
     }
 
     private fun isExpired(request: PendingRequest): Boolean =
