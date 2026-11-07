@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
-import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.AutoplayNextMode
@@ -50,7 +49,6 @@ import dev.jellystack.core.preferences.ResumeMode
 import dev.jellystack.core.preferences.SubtitleBackground
 import dev.jellystack.core.preferences.SubtitleMode
 import dev.jellystack.core.preferences.SubtitleTextSize
-import dev.jellystack.core.preferences.TRAILER_PREVIEW_DELAYS_MILLIS
 import dev.jellystack.core.profile.HouseholdProfileRepository
 import dev.jellystack.core.profile.ProfilePreferencesRepository
 import dev.jellystack.core.profile.resolveProfileConnections
@@ -141,7 +139,7 @@ internal fun TvSettingsScreen(
                 targetIds = tvSettingsControlKeys(category).map(::tvSettingsControlTargetId),
                 modifier = modifier,
             ) {
-                TvAppearanceSettings(settings, repository, strings, ::showChoices)
+                TvAppearanceSettings(settings, repository, strings)
             }
         TvSettingsCategory.PLAYBACK ->
             TvSettingsCategoryPage(
@@ -321,7 +319,7 @@ internal fun TvSettingsLandingScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val targetIds = TvSettingsCategory.entries.map(::tvSettingsCategoryTargetId)
+    val targetIds = TvSettingsCategory.visibleEntries.map(::tvSettingsCategoryTargetId)
     TvRouteFocusMaterializer(
         ownerId = "settings-landing",
         targetIds = targetIds.toSet(),
@@ -346,7 +344,7 @@ internal fun TvSettingsLandingScreen(
         item { Text(strings.settingsChooseCategory, color = TvTextMuted, fontSize = 19.sp) }
         item {
             TvSettingsGrid {
-                TvSettingsCategory.entries.forEachIndexed { index, category ->
+                TvSettingsCategory.visibleEntries.forEachIndexed { index, category ->
                     TvSettingTile(
                         title = category.title(strings),
                         value = category.description(strings),
@@ -398,22 +396,8 @@ private fun TvAppearanceSettings(
     settings: AppSettings,
     repository: AppSettingsRepository,
     strings: TvStrings,
-    showChoices: (String, List<TvChoiceOption>) -> Unit,
 ) {
     TvSettingsGrid {
-        TvSettingTile(
-            strings.language,
-            settings.appLanguage.label(strings),
-            screenEntry = true,
-            focusTargetId = tvSettingsControlTargetId("language"),
-        ) {
-            showChoices(
-                strings.language,
-                AppLanguage.entries.map { value ->
-                    TvChoiceOption(value.label(strings), value == settings.appLanguage) { repository.setAppLanguage(value) }
-                },
-            )
-        }
         TvSettingTile(
             strings.homeSections,
             if (settings.useServerHomeSections) strings.on else strings.off,
@@ -535,39 +519,6 @@ internal fun TvPlaybackSettings(
             checked = settings.statsForNerdsEnabled,
         ) {
             repository.setStatsForNerdsEnabled(!settings.statsForNerdsEnabled)
-        }
-        TvSettingTile(
-            strings.trailerPreviews,
-            if (settings.trailerPreviewsEnabled) strings.on else strings.off,
-            focusTargetId = tvSettingsControlTargetId("trailer-previews"),
-            checked = settings.trailerPreviewsEnabled,
-        ) {
-            repository.setTrailerPreviewsEnabled(!settings.trailerPreviewsEnabled)
-        }
-        TvSettingTile(
-            strings.trailerPreviewSound,
-            if (settings.trailerPreviewSoundEnabled) strings.on else strings.off,
-            enabled = settings.trailerPreviewsEnabled,
-            focusTargetId = tvSettingsControlTargetId("trailer-preview-sound"),
-            checked = settings.trailerPreviewSoundEnabled,
-        ) {
-            repository.setTrailerPreviewSoundEnabled(!settings.trailerPreviewSoundEnabled)
-        }
-        val labels = strings.settingsLabels
-        TvSettingTile(
-            labels.trailerPreviewDelay,
-            labels.seconds(settings.trailerPreviewDelayMillis),
-            enabled = settings.trailerPreviewsEnabled,
-            focusTargetId = tvSettingsControlTargetId("trailer-preview-delay"),
-        ) {
-            showChoices(
-                labels.trailerPreviewDelay,
-                TRAILER_PREVIEW_DELAYS_MILLIS.map { millis ->
-                    TvChoiceOption(labels.seconds(millis), millis == settings.trailerPreviewDelayMillis) {
-                        repository.setTrailerPreviewDelayMillis(millis)
-                    }
-                },
-            )
         }
     }
 }
@@ -713,7 +664,7 @@ private fun TvConnectionsSettings(
                 focusTargetId = manageSeerrTarget,
             )
         }
-        Text("Jellystack TV $appVersion", color = TvTextMuted)
+        Text("$TV_BRAND_VIDEO_PRO TV $appVersion", color = TvTextMuted)
     }
 }
 

@@ -6,14 +6,15 @@
 > migration code; it is not the release source. See
 > [Repository layout and release authority](repository-layout.md).
 
-Jellystack is a Kotlin Multiplatform project with shared domain, networking, persistence, playback coordination, and Compose UI. Android phone/tablet and Android TV / Fire TV are the released platforms, and the iOS host is experimental.
+Jellystack is a Kotlin Multiplatform project with shared domain, networking, persistence, playback coordination, and Compose UI. Android phone/tablet and Android TV / Fire TV are the released platforms, and the iOS host is experimental. The TV product is being migrated to Video Pro and the Dongpiandi official services; legacy Jellyfin/Seerr TV surfaces are transitional and are not the target product.
 
 ## Modules
 
 | Module | Kind | Responsibility |
 | --- | --- | --- |
 | `app-android` | Android app (`app.jellystack.mobile`) | Phone/tablet host: Activity lifecycle, permissions, Cast discovery, Media3 surface, Koin platform module, release packaging. |
-| `app-tv` | Android app (`app.jellystack.tv`, same `applicationId` as mobile) | GMS-free TV host for Android TV, Google TV, and Fire TV. |
+| `app-tv` | Android app (`app.jellystack.tv`, `applicationId = com.dongpiandi.videopro`) | GMS-free Video Pro TV host for Android TV, Google TV, and Fire TV. |
+| `dongpian-data` | Android library | Signed Dongpiandi transport, secure account session, catalog, playback-line, and library repositories. TV migration only. |
 | `app-ios` | KMP (iOS only) | Experimental iOS host and framework entry point. |
 | `design` | KMP (Android, iOS) | Phone/tablet Compose UI: navigation, screens, Compose resources (EN/DE), accessibility, adaptive layouts. `JellystackRoot.kt` is the mobile composition root. |
 | `design-tv` | Android library | Compose for TV UI: focus handling, remote controls, TV strings (`TvStrings.kt`). `TvJellystackRoot.kt` is the TV composition root. Does not depend on `design`. |
@@ -33,6 +34,7 @@ app-android ──► design ──────► players ──► shared-core
      │             └─(android)► players-cast-google ──► players
      └────────────────────────► shared-database ──► shared-core
 app-tv ──────► design-tv ────► players, shared-core, shared-network
+               └────────────► dongpian-data ──► shared-core, shared-network
 app-ios ─────► design, players, shared-core, shared-database, shared-network
 ```
 
@@ -45,3 +47,4 @@ Library modules never depend on app modules. `design` and `design-tv` are siblin
 - Jellyfin is authoritative for library identity, playback, progress, favourites, watched state, streams, and availability.
 - Seerr enriches discovery and request workflows but must never block Jellyfin playback.
 - Dependency injection uses Koin. The core module lives in `shared-core/.../di/Modules.kt`; each app module adds its platform module (`AndroidAppModule`, `TvAppModule`, `IosAppModule`).
+- The Video Pro TV migration treats Dongpiandi as authoritative for account, catalog, playback lines, favourites, history, and resume state. Session cookies stay inside `dongpian-data`; transport DTOs are mapped before reaching TV state.

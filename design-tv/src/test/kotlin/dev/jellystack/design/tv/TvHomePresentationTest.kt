@@ -147,6 +147,25 @@ class TvHomePresentationTest {
         assertEquals(null, sectionOf(movie, HomeSectionAction.SEERR).items.single().tvStagePreviewItem())
     }
 
+    @Test
+    fun retiredRecommendationCardsAreRemovedFromHomeSections() {
+        val available = sectionOf(item("available"), HomeSectionAction.JELLYFIN)
+        val recommendation = sectionOf(item("recommendation"), HomeSectionAction.SEERR)
+        val mixed = available.copy(items = available.items + recommendation.items)
+
+        val result =
+            tvVisibleHomeSections(
+                HomeSectionsState.Ready(
+                    sections = listOf(recommendation, mixed),
+                    imageBaseUrl = "https://example.test",
+                    imageAccessToken = "token",
+                ),
+            )
+
+        assertEquals(listOf("section-available"), result.map { it.id })
+        assertEquals(listOf(HomeSectionAction.JELLYFIN), result.single().items.map { it.action })
+    }
+
     private fun sectionOf(
         item: JellyfinItem,
         action: HomeSectionAction,

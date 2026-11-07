@@ -328,6 +328,8 @@ data class PlayerUiState(
     val meta: String = "",
     val desc: String = "",
     val posterUrl: String = "",
+    /** Category of the resolved playback item, independent of the local catalogue cache. */
+    val categoryId: String = "",
     /** 需求⑨修订：电影=true——更多面板隐藏选集区；电视剧/动漫/短剧保留选集 */
     val isMovie: Boolean = false,
     val lines: List<LineInfo> = emptyList(),
@@ -1592,6 +1594,7 @@ class PlayerViewModel(
         }
         currentCoroutineContext().ensureActive()
         currentItem = effItem
+        _ui.value = _ui.value.copy(categoryId = effItem.categoryId)
         // 埋点：解析开始（详情与片源解析并行的起点就在这里）。
         telemetry.mark(
             PlaybackTelemetry.Stage.RESOLVE_START,
@@ -1709,6 +1712,7 @@ class PlayerViewModel(
             },
             desc = playerItem.desc,
             posterUrl = playerItem.posterUrl,
+            categoryId = playerItem.categoryId,
             lines = lines,
             sourceResolving = false,
             engineId = engine.engineId,

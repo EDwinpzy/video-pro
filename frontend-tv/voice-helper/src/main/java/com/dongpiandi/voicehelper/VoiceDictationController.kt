@@ -21,7 +21,6 @@ internal class VoiceDictationController(
     private val context: Context,
     private val editorSession: () -> Long?,
     private val commit: (editor: Long, text: String) -> Boolean,
-    private val keyboardVisible: () -> Boolean = { true },
     private val recognizerFactory: () -> SystemDictationRecognizer = {
         SystemDictationRecognizerFactory.create(context)
     },
@@ -67,7 +66,6 @@ internal class VoiceDictationController(
 
         val editor = editorSession() ?: return false
         if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (!runCatching(keyboardVisible).getOrDefault(false)) return false
         ownsPress = true
         if (event.repeatCount != 0 || active) return true
         vendorAssistant.begin()
@@ -125,6 +123,7 @@ internal class VoiceDictationController(
     }
 
     fun cancel() {
+        ownsPress = false
         if (session.state == SystemDictationSession.State.IDLE && recognizer == null) return
         session.cancel()
         vendorAssistant.finish()
@@ -162,11 +161,6 @@ internal class VoiceDictationController(
     }
 
     private fun finish(token: Int) {
-        if (!runCatching(keyboardVisible).getOrDefault(false)) {
-            session.cancel()
-            cleanup()
-            return
-        }
         val editor = editorSession()
         val text = session.finish(token, pendingResult, editor)
         if (text == null) {

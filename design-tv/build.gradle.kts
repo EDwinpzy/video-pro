@@ -46,6 +46,7 @@ kotlin {
 dependencies {
     implementation(projects.sharedCore)
     implementation(projects.sharedNetwork)
+    implementation(projects.dongpianData)
     implementation(projects.players)
 
     implementation(libs.androidx.activity.compose)

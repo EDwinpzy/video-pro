@@ -39,6 +39,10 @@ class VendorAssistantSuppressor(
         schedule(RELEASE_DELAYS_MS)
     }
 
+    fun stopPending() {
+        clearScheduled()
+    }
+
     fun close() {
         clearScheduled()
         main.removeCallbacksAndMessages(null)

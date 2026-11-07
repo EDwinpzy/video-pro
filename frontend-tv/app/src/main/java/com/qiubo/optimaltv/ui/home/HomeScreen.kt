@@ -31,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -50,6 +51,7 @@ import com.qiubo.optimaltv.TvImageRequestSpec
 import com.qiubo.optimaltv.data.db.HistoryEntity
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.ui.components.InitialFocusEffect
+import com.qiubo.optimaltv.ui.components.HOME_TAB_KEY
 import com.qiubo.optimaltv.ui.components.HomeTabState
 import com.qiubo.optimaltv.ui.components.MainTabBar
 import com.qiubo.optimaltv.ui.components.NAV_DOWN
@@ -68,21 +70,10 @@ import com.qiubo.optimaltv.ui.theme.sxs
 import com.qiubo.optimaltv.ui.theme.sx
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.mutableStateMapOf
 import java.net.URLEncoder
 
-/**
- * 影视页（原版 view-vod，2026-08-28 重排）：
- * 前四个主标签页共用一个最近观看轮播台：只显示最近观看的 5 个影片，
- * hero 左右键手动切换（播放钮上），不自动轮播（需求 #15）。
- */
-/** 首屏最近观看轮播铺满整屏（2026-11-03 移除下方卡行后不再留灰底）。 */
+/** 首页与五个内容标签共用同一套热门影音 hero 组件，首屏海报带铺满整屏。 */
 private const val VOD_HERO_CONTENT_TOP = 180f
 
 /** 最近观看轮播最多展示数量。 */
@@ -197,10 +188,18 @@ internal object HomeLibraryUiPolicy {
 fun VodScreen(
     nav: NavController,
 ) {
+    if (HomeTabState.currentKey == HOME_TAB_KEY) {
+        HomeLandingScreen(nav)
+    } else {
+        CategoryVodScreen(nav)
+    }
+}
+
+@Composable
+private fun CategoryVodScreen(
+    nav: NavController,
+) {
     val tabKey = HomeTabState.currentKey
-    val catalog by Graph.repo.state.collectAsStateWithLifecycle()
-    val historyFlow = remember { Graph.db.vodDao().historyFlow(Int.MAX_VALUE) }
-    val history by historyFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val categoryKey = if (tabKey == "series") "tv" else tabKey
     val recommendations by Graph.repo.homeRecommendationsFlow.collectAsStateWithLifecycle()
     val categorySections = recommendations[com.qiubo.optimaltv.data.repo.VodRepository.categoryCid(categoryKey)].orEmpty()
@@ -213,6 +212,15 @@ fun VodScreen(
     val sectionFocusRequesters =
         remember(categoryKey) {
             List(sectionTitles.size) { FocusRequester() }
+        }
+    val heroesTop = remember(categorySections) { HomeHeroPolicy.forCategory(categorySections) }
+    val categoryLabel =
+        when (tabKey) {
+            "series" -> "电视剧"
+            "anime" -> "国漫"
+            "short" -> "短剧"
+            "variety" -> "综艺"
+            else -> "电影"
         }
     LaunchedEffect(categoryKey) {
         val expectedTitles = sectionTitles
@@ -252,46 +260,6 @@ fun VodScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 目录只为给云端历史补高清横版图；最近观看本身读本地 Room，不等网络。
-    LaunchedEffect(Unit) {
-        Graph.repo.ensureCatalogFresh()
-    }
-    val historyMetadata = remember { mutableStateMapOf<String, VodItem>() }
-    LaunchedEffect(history.map { it.vodId }, catalog.catalog) {
-        val knownIds = catalog.catalog?.groups?.values?.flatten()?.map { it.id }?.toSet().orEmpty()
-        val permits = Semaphore(4)
-        coroutineScope {
-            history.filter { it.vodId !in knownIds && it.vodId !in historyMetadata }.map { entry ->
-                async {
-                    permits.withPermit {
-                        try {
-                            Graph.repo.resolveDetail(entry.vodId)?.let { historyMetadata[entry.vodId] = it }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-            }.awaitAll()
-        }
-    }
-    val catalogById =
-        remember(catalog.catalog) {
-            catalog.catalog?.groups?.values
-                ?.flatten()
-                ?.associateBy(VodItem::id)
-                .orEmpty()
-        }
-    val heroesTop =
-        remember(history, catalogById, tabKey, historyMetadata.size) {
-            recentHistoryHeroes(
-                history = history,
-                catalog = catalog.catalog,
-                catalogById = catalogById,
-                tabKey = tabKey,
-                resolvedItems = historyMetadata,
-            )
-        }
     val selectedHeroIds = remember { mutableStateMapOf<String, String>() }
     val selectedHeroId = selectedHeroIds[tabKey]
     val heroIdxTop = heroesTop.indexOfFirst { it.id == selectedHeroId }.coerceAtLeast(0)
@@ -373,13 +341,8 @@ fun VodScreen(
                 Column(Modifier.height(500f.sx(s)).fillMaxWidth()) {
                     VodHeroBand(
                         nav, heroesTop, s, heroIdxTop, heroPlayFocus,
-                        categoryLabel = when (tabKey) {
-                            "series" -> "电视剧"
-                            "anime" -> "国漫"
-                            "short" -> "短剧"
-                            "variety" -> "综艺"
-                            else -> "电影"
-                        },
+                        emptyTitle = "暂无热门内容",
+                        emptyMessage = "热门${categoryLabel}加载完成后会显示在这里。",
                         listState = vodListState,
                         onOpenContent = { returnToHeroOnResume = true },
                         onPrev = {
@@ -443,6 +406,7 @@ internal data class HeroEntry(
     val title: String,
     val bg: String,
     val tag: String,
+    val fallbackBg: String = "",
     val episodeNumber: Int? = null,
     val history: HistoryEntity? = null,
 )
@@ -481,6 +445,7 @@ internal fun recentHistoryHeroes(
                 bg = item?.heroUrl?.takeIf(String::isNotBlank)
                     ?: item?.posterUrl?.takeIf(String::isNotBlank)
                     ?: h.posterUrl,
+                fallbackBg = h.posterUrl,
                 tag = item?.remark.orEmpty(),
                 episodeNumber = (h.epIndex + 1).takeIf {
                     (recentHistoryCategory(item) ?: tabKey) in MULTI_EPISODE_HERO_CATEGORIES
@@ -528,28 +493,54 @@ internal fun recentHistoryCategory(item: VodItem?): String? {
 }
 
 /**
- * 固定 hero 海报带（需求 #1/#8/#15/#16）：
- * 海报顶到屏幕最顶（无留白）+ 半透明白雾（透明度）；整屏铺满，不留空白；
- * 左右键在播放钮上手动切换影片，海报同步切换，不自动轮播。
+ * 固定 hero 海报带：热门海报顶到屏幕最顶并铺满 500px 高度；
+ * 首页自动轮播，分类页同样展示热门内容；播放钮上左右键可手动切换。
  */
 @Composable
-private fun VodHeroBand(
+internal fun VodHeroBand(
     nav: NavController,
     heroes: List<HeroEntry>,
     s: Float,
     idx: Int,
     playFocus: FocusRequester,
-    categoryLabel: String,
+    emptyTitle: String,
+    emptyMessage: String,
     listState: androidx.compose.foundation.lazy.LazyListState,
     onOpenContent: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    autoAdvance: Boolean = true,
+    onDown: (() -> Boolean)? = null,
 ) {
     val hero = heroes.getOrNull(idx % heroes.size.coerceAtLeast(1))
     val heroScope = androidx.compose.runtime.rememberCoroutineScope()
     val heroCtx = androidx.compose.ui.platform.LocalContext.current
     val heroImageSize =
         TvImageRequestSpec.heroSize(heroCtx.resources.displayMetrics.widthPixels)
+    var usingFallback by remember(hero?.id) { mutableStateOf(false) }
+    val heroArtwork =
+        hero?.let { entry ->
+            if (usingFallback && entry.fallbackBg.isNotBlank()) entry.fallbackBg else entry.bg
+        }.orEmpty()
+    var heroFocused by remember { mutableStateOf(false) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var resumed by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) resumed = true
+                if (event == Lifecycle.Event.ON_PAUSE) resumed = false
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(hero?.id, heroes.size, autoAdvance, resumed, heroFocused) {
+        if (!autoAdvance || !resumed || heroFocused || heroes.size <= 1) return@LaunchedEffect
+        delay(7_000L)
+        onNext()
+    }
     Box(Modifier.fillMaxSize()) {
         hero?.let { h ->
             // 需求⑦（2026-09-07）：左右切换影片时海报交叉淡入（Crossfade 双层叠化），
@@ -565,12 +556,19 @@ private fun VodHeroBand(
                     },
                     contentDescription = h.title,
                     contentScale = ContentScale.Crop,
+                    // The hero band is only 500px high. Bias the crop towards the
+                    // upper part of the source instead of cutting faces at both edges.
+                    alignment = BiasAlignment(0f, -0.5f),
                     onState = { st ->
                         if (st is coil.compose.AsyncImagePainter.State.Error) {
+                            if (!usingFallback && h.fallbackBg.isNotBlank() && h.fallbackBg != h.bg) {
+                                usingFallback = true
+                                return@AsyncImage
+                            }
                             com.qiubo.optimaltv.OtvLog.w(
                                 "vod hero poster 加载失败: " +
                                     "${st.result.throwable.javaClass.simpleName} " +
-                                    "url=${com.qiubo.optimaltv.ui.components.posterLogLabel(h.bg)}",
+                                    "url=${com.qiubo.optimaltv.ui.components.posterLogLabel(heroArtwork)}",
                             )
                         }
                     },
@@ -579,14 +577,14 @@ private fun VodHeroBand(
             }
             if (com.qiubo.optimaltv.TvPerformanceProfile.navigationMotionEnabled) {
                 androidx.compose.animation.Crossfade(
-                    targetState = h.bg,
+                    targetState = heroArtwork,
                     animationSpec = androidx.compose.animation.core.tween(durationMillis = 450),
                     label = "vodHeroBg",
                 ) { url ->
                     heroImage(url)
                 }
             } else {
-                heroImage(h.bg)
+                heroImage(heroArtwork)
             }
         }
         // White veil + left dark gradient are pre-composited into one gradient.
@@ -723,13 +721,13 @@ private fun VodHeroBand(
                                 when (dir) {
                                     NAV_LEFT -> if (heroes.size > 1) { onPrev(); true } else false
                                     NAV_RIGHT -> if (heroes.size > 1) { onNext(); true } else false
-                                    // 最近观看已移到顶部轮播，页面下方不再有第二个焦点区。
-                                    NAV_DOWN -> false
+                                    NAV_DOWN -> onDown?.invoke() == true
                                     else -> false
                                 }
                             },
                             // 需求 影视#1：光标移到「立即播放」时页面滚动回最上方
                             onFocusedChange = {
+                                heroFocused = it
                                 if (it) {
                                     ReturnFocus.mark("vod", "hero")
                                     if (listState.firstVisibleItemIndex != 0 ||
@@ -747,23 +745,15 @@ private fun VodHeroBand(
                         .height(64f.sx(s))
                         .padding(horizontal = 40f.sx(s)),
                 ) {
-                    /* 看过的影片换成「继续播放」（用户 2026-09-17 要求） */
                     Text(
-                        if (h.history != null) "继续播放" else "立即播放",
+                        "立即播放",
                         color = OtvColors.Bg, fontSize = 26f.sxs(s), fontWeight = FontWeight.Bold,
-                    )
-                }
-                h.history?.let { history ->
-                    HeroHistoryProgress(
-                        history = history,
-                        showEpisode = h.episodeNumber != null,
-                        s = s,
                     )
                 }
             }
         }
         if (hero == null) {
-            EmptyRecentHero(nav, playFocus, s, categoryLabel)
+            EmptyPopularHero(nav, playFocus, s, emptyTitle, emptyMessage)
         }
         // carousel-dots（带内底部居中：黑50%胶囊，当前页白点）
         if (heroes.size > 1) {
@@ -792,13 +782,14 @@ private fun VodHeroBand(
 
 private val MULTI_EPISODE_HERO_CATEGORIES = setOf("series", "anime", "short", "variety")
 
-/** 未登录或新账号暂无任何本地/云端历史时，给标签栏 DOWN 一个明确落点。 */
+/** 热门内容暂时不可用时，给标签栏 DOWN 一个明确落点。 */
 @Composable
-private fun EmptyRecentHero(
+private fun EmptyPopularHero(
     nav: NavController,
     playFocus: FocusRequester,
     s: Float,
-    categoryLabel: String,
+    emptyTitle: String,
+    emptyMessage: String,
 ) {
     Column(
         verticalArrangement = Arrangement.Center,
@@ -807,14 +798,14 @@ private fun EmptyRecentHero(
             .padding(horizontal = 91f.sx(s)),
     ) {
         Text(
-            "还没有${categoryLabel}观看记录",
+            emptyTitle,
             color = OtvColors.White,
             fontSize = 44f.sxs(s),
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(14f.sx(s)))
         Text(
-            "最近观看的${categoryLabel}会出现在这里，最多显示 5 部。",
+            emptyMessage,
             color = OtvColors.White55,
             fontSize = 27f.sxs(s),
         )

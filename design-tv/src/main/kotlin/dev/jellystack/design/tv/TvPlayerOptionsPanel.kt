@@ -305,19 +305,6 @@ internal fun TvPlayerOptionsPanel(
                             checked = state.statsForNerdsEnabled,
                         )
                     }
-                    item {
-                        TvPlayerOptionRow(
-                            Icons.Default.Groups,
-                            strings.syncPlay,
-                            if (syncState.canJoin) syncState.currentGroup?.name ?: strings.off else strings.syncPlayNoPermission,
-                            false,
-                            {
-                                if (syncState.canJoin) syncPlay.refresh()
-                                onOpenFromMore(TvPlayerPanel.SYNCPLAY)
-                            },
-                            Modifier.focusRequester(syncFocus),
-                        )
-                    }
                 }
             TvPlayerPanel.AUDIO ->
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -461,7 +448,7 @@ internal fun TvPlayerOptionsPanel(
                                         strings.createGroup,
                                         null,
                                         false,
-                                        { syncPlay.createGroup("Jellystack TV") },
+                                        { syncPlay.createGroup("$TV_BRAND_VIDEO_PRO TV") },
                                         Modifier.focusRequester(firstFocus),
                                         trailing = {},
                                     )

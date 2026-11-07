@@ -10,6 +10,7 @@
                 <action android:name="com.dongpiandi.voicehelper.DEBUG_CANCEL" />
                 <action android:name="com.dongpiandi.voicehelper.DEBUG_CONFIGURE" />
                 <action android:name="com.dongpiandi.voicehelper.DEBUG_PRESS_VOICE" />
+                <action android:name="com.dongpiandi.voicehelper.DEBUG_INJECT_PCM" />
             </intent-filter>
         </receiver>
     </application>

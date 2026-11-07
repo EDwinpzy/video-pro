@@ -1,199 +1,72 @@
 package app.jellystack.tv
 
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.view.KeyEvent
-import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.setContent
-import androidx.annotation.OptIn
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.util.UnstableApi
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.navigationevent.setViewTreeNavigationEventDispatcherOwner
-import com.russhwolf.settings.SharedPreferencesSettings
-import dev.jellystack.core.di.JellystackDI
-import dev.jellystack.core.jellyfin.JellyfinBrowseRepository
-import dev.jellystack.core.jellyfin.JellyfinEnvironmentProvider
-import dev.jellystack.core.playback.JellyfinStreamingProgressReporter
-import dev.jellystack.core.preferences.AppSettingsRepository
-import dev.jellystack.core.preferences.ResumeMode
-import dev.jellystack.core.preferences.StreamingQualityPreference
-import dev.jellystack.core.preferences.SubtitleMode
-import dev.jellystack.core.profile.ActiveProfileRepository
-import dev.jellystack.core.profile.ProfilePreferencesRepository
-import dev.jellystack.design.tv.TvJellystackRoot
-import dev.jellystack.players.AndroidPlaybackSessionBridge
-import dev.jellystack.players.AndroidPlayerEngine
-import dev.jellystack.players.AndroidTvPlaybackDeviceProfileProvider
-import dev.jellystack.players.JellyfinPlaybackSourceResolver
-import dev.jellystack.players.NetworkJellyfinPlaybackInfoService
-import dev.jellystack.players.PlaybackController
-import dev.jellystack.players.PlaybackNetworkClass
-import dev.jellystack.players.PlaybackNetworkClassifier
-import dev.jellystack.players.PlaybackPreferencesProvider
-import dev.jellystack.players.PlaybackState
-import dev.jellystack.players.SettingsPlaybackProgressStore
-import dev.jellystack.players.SettingsSubtitlePreferenceStore
-import dev.jellystack.players.TranscodeStopReporter
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
+import dev.jellystack.design.tv.VideoProTvRoot
 
-@OptIn(UnstableApi::class)
 class MainActivity : AppCompatActivity() {
-    private lateinit var playerEngine: AndroidPlayerEngine
-    private lateinit var playbackController: PlaybackController
-    private lateinit var playbackBridge: AndroidPlaybackSessionBridge
-    private lateinit var trailerPreviewEngine: AndroidPlayerEngine
-    private lateinit var trailerPreviewController: PlaybackController
-    private lateinit var platformActions: TvPlatformActionCoordinator<KeyEvent>
-    private lateinit var voiceSearch: AndroidTvVoiceSearch
+    private var systemDictationEnabled by mutableStateOf(false)
+    private var pendingDictationSettings = false
+    private val microphonePermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (pendingDictationSettings) {
+                pendingDictationSettings = false
+                if (granted) {
+                    openDictationSettings()
+                } else {
+                    Toast.makeText(
+                        this,
+                        R.string.system_dictation_microphone_denied,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // A restore after process death starts a new household session, so it gets the cold-launch profile gate.
-        val coldLaunch = savedInstanceState == null || !processStarted
-        processStarted = true
+        systemDictationEnabled = SystemDictationAccess.isEnabled(this)
         window.decorView.setViewTreeNavigationEventDispatcherOwner(this)
-        voiceSearch = AndroidTvVoiceSearch.create(this)
-        playerEngine =
-            AndroidPlayerEngine(
-                context = applicationContext,
-                preferHighestSupportedBitrate = true,
-            )
-        val koin = JellystackDI.koin
-        val settingsRepository = koin.get<AppSettingsRepository>()
-        val activeProfileRepository = koin.get<ActiveProfileRepository>()
-        val profilePreferencesRepository = koin.get<ProfilePreferencesRepository>()
-        val browseRepository = koin.get<JellyfinBrowseRepository>()
-        val playbackSettings =
-            SharedPreferencesSettings(
-                getSharedPreferences("jellystack_playback", Context.MODE_PRIVATE),
-            )
-        playbackController =
-            PlaybackController(
-                progressStore = SettingsPlaybackProgressStore(playbackSettings),
-                playbackSourceResolver =
-                    JellyfinPlaybackSourceResolver(
-                        playbackInfoService = NetworkJellyfinPlaybackInfoService(),
-                        deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
-                        clientVersion = BuildConfig.VERSION_NAME,
-                    ),
-                playerEngine = playerEngine,
-                streamingProgressReporter = JellyfinStreamingProgressReporter(browseRepository),
-                subtitlePreferenceStore = SettingsSubtitlePreferenceStore(playbackSettings),
-                // TV exposes a single streaming-quality setting (stored as the Wi-Fi quality), so every
-                // network counts as unmetered. Otherwise the mobile quality, which TV cannot change, wins.
-                playbackNetworkClassifier = PlaybackNetworkClassifier { PlaybackNetworkClass.UNMETERED },
-                playbackPreferencesProvider =
-                    PlaybackPreferencesProvider {
-                        val deviceSettings = settingsRepository.settings.value
-                        activeProfileRepository.profileId.value
-                            ?.let { profilePreferencesRepository.preferences(it).value.applyTo(deviceSettings) }
-                            ?: deviceSettings
-                    },
-            )
-        trailerPreviewController = createTrailerPreviewController(settingsRepository)
-        playbackBridge =
-            AndroidPlaybackSessionBridge(
-                context = this,
-                engine = playerEngine,
-                controller = playbackController,
-                seekBackMs = { settingsRepository.settings.value.seekBackSeconds * 1_000L },
-                seekForwardMs = { settingsRepository.settings.value.seekForwardSeconds * 1_000L },
-            )
-        platformActions =
-            TvPlatformActionCoordinator(
-                object : TvPlatformActions<KeyEvent> {
-                    override fun setKeepScreenOn(enabled: Boolean) {
-                        if (enabled) {
-                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        } else {
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        }
-                    }
-
-                    override fun markPlaybackStarted() = playbackBridge.markPlaybackStarted()
-
-                    override fun handleMediaKey(event: KeyEvent): Boolean = playbackBridge.handleMediaKeyEvent(event)
-
-                    override fun stopTrailer() = trailerPreviewController.stop(saveProgress = false)
-
-                    override fun stopPlayback() = playbackBridge.stopPlayback()
-
-                    override fun releaseTrailer() = trailerPreviewController.release()
-
-                    override fun releaseBridge() = playbackBridge.release()
-
-                    override fun releasePlayback() = playbackController.release()
-                },
-            )
-        lifecycleScope.launch {
-            val activity = playbackController.state.map(PlaybackState::screenActivity)
-            launch { activity.map { it != TvScreenActivity.IDLE }.collect(platformActions::onPlaybackActivityChanged) }
-            launch { activity.keepScreenOn().collect(platformActions::onKeepScreenOnChanged) }
-        }
         setContent {
-            TvJellystackRoot(
-                playbackController = playbackController,
-                playerEngine = playerEngine,
-                trailerPreviewController = trailerPreviewController,
-                trailerPreviewEngine = trailerPreviewEngine,
-                appVersion = BuildConfig.VERSION_NAME,
-                stopPlayback = playbackBridge::stopPlayback,
-                coldLaunch = coldLaunch,
-                voiceSearch = voiceSearch,
+            VideoProTvRoot(
                 onExitConfirmed = ::finish,
+                systemDictationEnabled = systemDictationEnabled,
+                onOpenSystemDictationSettings = ::requestDictationSettings,
             )
         }
     }
 
-    private fun createTrailerPreviewController(settingsRepository: AppSettingsRepository): PlaybackController {
-        // The engine builds its ExoPlayer on the first trailer, so a session that never previews one pays nothing.
-        trailerPreviewEngine = AndroidPlayerEngine(context = applicationContext)
-        val playbackInfoService = NetworkJellyfinPlaybackInfoService()
-        return PlaybackController(
-            playbackSourceResolver =
-                JellyfinPlaybackSourceResolver(
-                    playbackInfoService = playbackInfoService,
-                    deviceProfileProvider = AndroidTvPlaybackDeviceProfileProvider(),
-                    clientVersion = BuildConfig.VERSION_NAME,
-                ),
-            playerEngine = trailerPreviewEngine,
-            // Previews stay out of the watch history; the reporter only stops the server transcode of a finished one.
-            streamingProgressReporter =
-                TranscodeStopReporter(playbackInfoService, JellystackDI.koin.get<JellyfinEnvironmentProvider>()),
-            playbackPreferencesProvider =
-                PlaybackPreferencesProvider {
-                    settingsRepository.settings.value.copy(
-                        wifiStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
-                        mobileStreamingQuality = StreamingQualityPreference.MBPS_4_720P,
-                        resumeMode = ResumeMode.RESTART,
-                        preferredSubtitleLanguage = null,
-                        subtitleMode = SubtitleMode.OFF,
-                        rememberSeriesTracks = false,
-                    )
-                },
-        )
+    override fun onResume() {
+        super.onResume()
+        systemDictationEnabled = SystemDictationAccess.isEnabled(this)
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val isPlaybackVisible = playbackController.state.value is PlaybackState.Active
-        if (platformActions.dispatchMediaKey(event, isPlaybackVisible)) return true
-        return super.dispatchKeyEvent(event)
+    private fun requestDictationSettings() {
+        if (Build.VERSION.SDK_INT < 33) {
+            Toast.makeText(this, R.string.system_dictation_android13_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingDictationSettings = true
+            microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        openDictationSettings()
     }
 
-    override fun onStop() {
-        platformActions.onStop(isChangingConfigurations, isFinishing)
-        super.onStop()
-    }
-
-    override fun onDestroy() {
-        platformActions.onDestroy()
-        super.onDestroy()
-    }
-
-    private companion object {
-        /** False in a fresh process, including one Android starts to restore this activity. */
-        var processStarted = false
+    private fun openDictationSettings() {
+        if (!SystemDictationAccess.openSettings(this)) {
+            Toast.makeText(this, R.string.system_dictation_open_settings_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 }

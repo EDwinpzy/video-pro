@@ -12,6 +12,9 @@ internal enum class TvSettingsCategory(
     ;
 
     companion object {
+        val visibleEntries: List<TvSettingsCategory> =
+            listOf(APPEARANCE, PLAYBACK, AUDIO_SUBTITLES, SEGMENT_SKIPPING)
+
         fun fromRouteSection(section: String?): TvSettingsCategory? =
             section
                 ?.takeIf(String::isNotBlank)
@@ -25,7 +28,7 @@ internal fun tvConnectionsSettingsRoute(): TvRoute.Settings = tvSettingsRoute(Tv
 
 internal fun tvSettingsControlKeys(category: TvSettingsCategory): List<String> =
     when (category) {
-        TvSettingsCategory.APPEARANCE -> listOf("language", "home-sections")
+        TvSettingsCategory.APPEARANCE -> listOf("home-sections")
         TvSettingsCategory.PLAYBACK ->
             listOf(
                 "quality",
@@ -35,8 +38,6 @@ internal fun tvSettingsControlKeys(category: TvSettingsCategory): List<String> =
                 "seek-forward",
                 "playback-speed",
                 "stats",
-                "trailer-previews",
-                "trailer-preview-sound",
             )
         TvSettingsCategory.AUDIO_SUBTITLES ->
             listOf("audio-language", "subtitle-language", "subtitle-mode", "subtitle-size", "subtitle-background")

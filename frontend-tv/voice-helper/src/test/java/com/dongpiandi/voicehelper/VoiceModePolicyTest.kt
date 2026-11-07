@@ -1,44 +1,30 @@
 package com.dongpiandi.voicehelper
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceModePolicyTest {
     @Test
-    fun editorWithVisibleInputMethodUsesDictation() {
+    fun focusedEditorUsesDictation() {
         assertEquals(
             VoiceMode.DICTATION,
-            VoiceModePolicy.resolve(editorAttached = true, inputMethodVisible = true),
-        )
-        assertTrue(
-            VoiceModePolicy.shouldDisableFactoryKeyService(
-                editorAttached = true,
-                inputMethodVisible = true,
-            ),
+            VoiceModePolicy.resolve(editorAttached = true),
         )
     }
 
     @Test
-    fun noEditorKeepsFactoryAssistant() {
+    fun noEditorUsesCustomAssistant() {
         assertEquals(
-            VoiceMode.FACTORY_ASSISTANT,
-            VoiceModePolicy.resolve(editorAttached = false, inputMethodVisible = false),
-        )
-        assertFalse(
-            VoiceModePolicy.shouldDisableFactoryKeyService(
-                editorAttached = false,
-                inputMethodVisible = false,
-            ),
+            VoiceMode.ASSISTANT,
+            VoiceModePolicy.resolve(editorAttached = false),
         )
     }
 
     @Test
-    fun staleEditorWithoutVisibleInputMethodKeepsFactoryAssistant() {
+    fun focusedEditorUsesDictationEvenIfSoftwareKeyboardIsHidden() {
         assertEquals(
-            VoiceMode.FACTORY_ASSISTANT,
-            VoiceModePolicy.resolve(editorAttached = true, inputMethodVisible = false),
+            VoiceMode.DICTATION,
+            VoiceModePolicy.resolve(editorAttached = true),
         )
     }
 }

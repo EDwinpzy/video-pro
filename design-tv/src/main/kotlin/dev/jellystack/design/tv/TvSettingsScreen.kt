@@ -56,7 +56,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettings
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.preferences.AutoplayNextMode
@@ -380,13 +379,6 @@ internal fun TvSeerrConnectDialog(
         if (needsCredentials) jellyfinMethodFocus.requestFocus() else urlFocus.requestFocus()
     }
 }
-
-internal fun AppLanguage.label(strings: TvStrings): String =
-    when (this) {
-        AppLanguage.SYSTEM -> strings.systemDefault
-        AppLanguage.ENGLISH -> strings.english
-        AppLanguage.GERMAN -> strings.german
-    }
 
 internal fun SubtitleMode.label(strings: TvStrings): String =
     when (this) {

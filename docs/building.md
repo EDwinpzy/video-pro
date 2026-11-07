@@ -54,6 +54,7 @@ The full CI gate (static checks, resource parity, manifest allowlists, unit test
   :app-android:verifyReleaseManifestPermissions \
   :app-tv:verifyTvReleaseManifestPermissions \
   :shared-network:jvmTest \
+  :dongpian-data:testDebugUnitTest \
   :shared-core:testDebugUnitTest \
   :shared-database:testDebugUnitTest \
   :players:testDebugUnitTest \

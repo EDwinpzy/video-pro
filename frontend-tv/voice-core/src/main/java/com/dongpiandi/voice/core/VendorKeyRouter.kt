@@ -18,9 +18,9 @@ internal object VendorKeyRoutingPolicy {
 
 /**
  * The S621 firmware's middleware accessibility service turns the voice key into an implicit
- * broadcast before every other accessibility service sees it. While a real editor and IME are
- * visible, temporarily remove only that key service so the factory assistant cannot start and the
- * voice key reaches dictation without competing for the microphone.
+ * broadcast before every other accessibility service sees it. The helper removes that key service
+ * while it is active so the voice key reaches only the helper. Dictation and assistant modes both
+ * drive the factory recognizer directly; neither opens the factory assistant UI.
  */
 class VendorKeyRouter(
     context: Context,
@@ -42,7 +42,6 @@ class VendorKeyRouter(
     }
 
     fun setDictationOnly(enabled: Boolean) {
-        if (enabled == dictationOnly) return
         if (enabled) {
             if (!isFactoryKeyServiceEnabled()) {
                 dictationOnly = true

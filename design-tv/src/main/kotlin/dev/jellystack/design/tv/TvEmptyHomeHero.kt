@@ -53,9 +53,9 @@ internal fun TvEmptyHomeHero(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = TvPurple, modifier = Modifier.size(18.dp))
-                Text(TV_BRAND_JELLYSTACK, color = TvPurple, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(TV_BRAND_VIDEO_PRO, color = TvPurple, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
-            Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+            Text(TV_BRAND_VIDEO_PRO, color = TvText, fontSize = 40.sp, fontWeight = FontWeight.Bold)
             Text(
                 state.homeErrorMessage
                     ?.takeIf { it.isNotBlank() }

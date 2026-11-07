@@ -7,7 +7,11 @@ class AssistantConfigurationException internal constructor(
 ) : Exception(message)
 
 object ChatEndpointPolicy {
-    private const val CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
+    private const val VERSIONED_API_PATH = "/v1"
+    private const val CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
+    private const val RESPONSES_ENDPOINT = "/responses"
+    private const val CHAT_COMPLETIONS_PATH = "$VERSIONED_API_PATH$CHAT_COMPLETIONS_ENDPOINT"
+    private const val RESPONSES_PATH = "$VERSIONED_API_PATH$RESPONSES_ENDPOINT"
     private const val INVALID_CONFIGURATION = "语音助手配置无效。"
 
     fun normalizeBaseUrl(raw: String): String {
@@ -41,20 +45,11 @@ object ChatEndpointPolicy {
     }
 
     fun chatCompletionsUrl(rawBaseUrl: String): String {
-        val normalized = normalizeBaseUrl(rawBaseUrl)
-        val base = normalized.toHttpUrlOrNull()
-            ?: throw AssistantConfigurationException(INVALID_CONFIGURATION)
-        val path = base.encodedPath.trimEnd('/')
-        val endpointPath =
-            when {
-                path.endsWith(CHAT_COMPLETIONS_PATH) -> path
-                path.endsWith("/v1") -> "$path/chat/completions"
-                else -> "$path$CHAT_COMPLETIONS_PATH"
-            }
-        return base.newBuilder()
-            .encodedPath(endpointPath)
-            .build()
-            .toString()
+        return buildApiEndpoint(rawBaseUrl, CHAT_COMPLETIONS_ENDPOINT)
+    }
+
+    fun responsesUrl(rawBaseUrl: String): String {
+        return buildApiEndpoint(rawBaseUrl, RESPONSES_ENDPOINT)
     }
 
     fun isValid(rawBaseUrl: String): Boolean =
@@ -64,4 +59,27 @@ object ChatEndpointPolicy {
         } catch (_: AssistantConfigurationException) {
             false
         }
+
+    private fun buildApiEndpoint(
+        rawBaseUrl: String,
+        endpointSuffix: String,
+    ): String {
+        val base =
+            normalizeBaseUrl(rawBaseUrl).toHttpUrlOrNull()
+                ?: throw AssistantConfigurationException(INVALID_CONFIGURATION)
+        val path = base.encodedPath.trimEnd('/')
+        val apiRoot =
+            when {
+                path.endsWith(CHAT_COMPLETIONS_PATH) ->
+                    path.removeSuffix(CHAT_COMPLETIONS_PATH) + VERSIONED_API_PATH
+                path.endsWith(RESPONSES_PATH) ->
+                    path.removeSuffix(RESPONSES_PATH) + VERSIONED_API_PATH
+                path.endsWith(VERSIONED_API_PATH) -> path
+                else -> "$path$VERSIONED_API_PATH"
+            }
+        return base.newBuilder()
+            .encodedPath("$apiRoot$endpointSuffix")
+            .build()
+            .toString()
+    }
 }

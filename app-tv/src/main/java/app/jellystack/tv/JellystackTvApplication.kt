@@ -2,6 +2,7 @@ package app.jellystack.tv
 
 import android.app.Application
 import app.jellystack.tv.di.tvAppModule
+import com.dongpiandi.videopro.data.di.dongpianDataModule
 import dev.jellystack.core.di.JellystackDI
 import dev.jellystack.core.diagnostics.AndroidDiagnostics
 import dev.jellystack.core.logging.JellystackLog
@@ -20,7 +21,7 @@ class JellystackTvApplication : Application() {
         if (!JellystackDI.isStarted()) {
             startKoin {
                 androidContext(this@JellystackTvApplication)
-                modules(JellystackDI.modules + tvAppModule)
+                modules(JellystackDI.modules + tvAppModule + dongpianDataModule)
             }
         }
     }

@@ -3,6 +3,7 @@
 /.kotlin/
 **/build/
 **/out/
+**/.cxx/
 
 # Local machine configuration
 /local.properties
@@ -36,6 +37,7 @@ keystore.properties
 # Local QA captures, tooling and diagnostics
 # (personal entries are better kept in .git/info/exclude)
 /.qa-*
+/frontend-tv/voice-helper/src/debug/assets/dictation_zh_16k.pcm
 /.superpowers/
 /.sdd/
 /.zcode/

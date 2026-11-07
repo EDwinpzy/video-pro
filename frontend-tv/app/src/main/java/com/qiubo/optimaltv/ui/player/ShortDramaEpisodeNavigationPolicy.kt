@@ -2,7 +2,7 @@ package com.qiubo.optimaltv.ui.player
 
 import android.view.KeyEvent
 
-/** Short drama episode shortcuts are active only while the player HUD is hidden. */
+/** Short drama episode shortcuts own UP/DOWN during ordinary playback, including while the HUD is visible. */
 internal object ShortDramaEpisodeNavigationPolicy {
     fun isShortDrama(categoryId: String): Boolean {
         val category = categoryId.trim().substringAfterLast(':').lowercase()
@@ -11,13 +11,11 @@ internal object ShortDramaEpisodeNavigationPolicy {
 
     fun canIntercept(
         categoryId: String,
-        controlsVisible: Boolean,
         panelOpen: Boolean,
         dialogOpen: Boolean,
         isLive: Boolean,
         hasFatalError: Boolean,
     ): Boolean = isShortDrama(categoryId) &&
-        !controlsVisible &&
         !panelOpen &&
         !dialogOpen &&
         !isLive &&
@@ -51,7 +49,7 @@ internal data class ShortDramaEpisodeKeyResult(
 
 /**
  * One physical UP/DOWN press selects at most one adjacent episode. Repeats and the
- * matching release are consumed so the hidden-control sink cannot act a second time.
+ * matching release are consumed so the player HUD cannot also handle the same press.
  */
 internal class ShortDramaEpisodeKeyHandler {
     private val activePresses = mutableMapOf<Int, Long>()
@@ -64,7 +62,6 @@ internal class ShortDramaEpisodeKeyHandler {
         downTimeMs: Long,
         currentEpisode: Int,
         episodeCount: Int,
-        controlsVisible: Boolean,
         panelOpen: Boolean,
         dialogOpen: Boolean,
         isLive: Boolean,
@@ -77,7 +74,6 @@ internal class ShortDramaEpisodeKeyHandler {
 
         val canIntercept = ShortDramaEpisodeNavigationPolicy.canIntercept(
             categoryId = categoryId,
-            controlsVisible = controlsVisible,
             panelOpen = panelOpen,
             dialogOpen = dialogOpen,
             isLive = isLive,

@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 
 class TvUnifiedSearchCoordinatorTest {
     @Test
-    fun restoredQueryIsSubmittedExactlyOnceToBothSources() =
+    fun restoredQueryIsSubmittedOnceToTheCatalogOnly() =
         runTest {
             val jellyfinQueries = mutableListOf<String>()
             val seerrQueries = mutableListOf<String>()
@@ -44,7 +44,7 @@ class TvUnifiedSearchCoordinatorTest {
             advanceUntilIdle()
 
             assertEquals(listOf("restored"), jellyfinQueries)
-            assertEquals(listOf("restored"), seerrQueries)
+            assertEquals(emptyList(), seerrQueries)
             assertEquals(TvSearchMode.BROWSE, coordinator.state.value.session.mode)
         }
 
@@ -80,13 +80,13 @@ class TvUnifiedSearchCoordinatorTest {
             val state = coordinator.state.value
             assertEquals("new", state.session.query)
             assertEquals(listOf("new"), state.jellyfin.items.map(JellyfinItem::id))
-            assertEquals(listOf("new"), state.seerr.items.map(JellyseerrSearchItem::title))
+            assertEquals(emptyList(), state.seerr.items)
         }
 
     @Test
-    fun partialFailureKeepsTheSuccessfulSourceAndRetryContent() =
+    fun normalSearchNeverQueriesTheRetiredRecommendationSource() =
         runTest {
-            var failSeerr = true
+            var seerrQueries = 0
             val coordinator =
                 TvSearchCoordinator(
                     scope = this,
@@ -95,8 +95,8 @@ class TvUnifiedSearchCoordinatorTest {
                         TvSearchSources(
                             jellyfin = { listOf(jellyfinItem("available")) },
                             seerr = {
-                                if (failSeerr) error("offline")
-                                listOf(seerrItem("requestable"))
+                                seerrQueries += 1
+                                error("Seerr must not be queried")
                             },
                         ),
                 )
@@ -108,21 +108,8 @@ class TvUnifiedSearchCoordinatorTest {
                 coordinator.state.value.jellyfin.items
                     .map(JellyfinItem::id),
             )
-            assertEquals("offline", coordinator.state.value.seerr.errorMessage)
-
-            failSeerr = false
-            coordinator.retrySeerr()
-            assertEquals(
-                listOf("available"),
-                coordinator.state.value.jellyfin.items
-                    .map(JellyfinItem::id),
-            )
-            advanceUntilIdle()
-            assertEquals(
-                listOf("requestable"),
-                coordinator.state.value.seerr.items
-                    .map(JellyseerrSearchItem::title),
-            )
+            assertEquals(0, seerrQueries)
+            assertEquals(null, coordinator.state.value.seerr.errorMessage)
         }
 
     @Test

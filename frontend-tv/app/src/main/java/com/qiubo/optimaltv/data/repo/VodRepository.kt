@@ -843,6 +843,13 @@ class VodRepository(
                     emptyList()
                 } else if (category == "movie" || category == "tv") {
                     official.recommendationSections(category, requireComplete).map { HSec(it.title, it.items) }
+                } else if (category == "anime") {
+                    official.animeRecommendationSections(requireComplete).map { section ->
+                        HSec(
+                            section.title,
+                            section.items.filter { HomeFeedLayout.matchesCategory(it, category) },
+                        )
+                    }
                 } else {
                     withContext(Dispatchers.IO) {
                         VodApiSource.fetchHome(

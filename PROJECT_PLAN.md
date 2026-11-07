@@ -14,7 +14,8 @@ playback, favorites, and watch-history services.
 ## Status
 
 - Upstream baseline: `Darkatek7/jellystack` at `c6eef175c09c4c413aeede37888f4f8ce978b9a2`
-- Current state: project shell and migration plan only
+- Current state: Video Pro TV root and first Dongpiandi data adapter implemented;
+  playback and progress-sync integration remain in progress
 - Target application ID: `com.dongpiandi.videopro`
 - License: GPL-3.0; every distributed derivative must comply with the upstream license
 

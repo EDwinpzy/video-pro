@@ -129,6 +129,32 @@ class DongpianOfficialVodSource(
         }.awaitAll()
     }
 
+    suspend fun animeRecommendationSections(requireComplete: Boolean = false): List<HomeSection> = coroutineScope {
+        listOf(
+            "最近热门" to "sort=trending&window=day",
+            "最近更新" to "intent=latest_catalog",
+            "豆瓣高分" to "sort=rating&window=total",
+        ).map { (title, query) ->
+            async {
+                val items = recommendationSlots.withPermit {
+                    try {
+                        browseAll(
+                            "kind=anime&$query",
+                            maxPages = 1,
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        if (requireComplete) throw failure
+                        OtvLog.w("国漫栏目加载失败: $title ${failure.javaClass.simpleName}")
+                        emptyList()
+                    }
+                }
+                HomeSection(title, items)
+            }
+        }.awaitAll()
+    }
+
     suspend fun recommendationSections(
         category: String,
         requireComplete: Boolean = false,

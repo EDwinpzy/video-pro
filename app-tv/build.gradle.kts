@@ -31,11 +31,13 @@ val verifyTvReleaseManifestPermissions by tasks.registering {
                 .findAll(manifest.get().asFile.readText())
                 .map { it.groupValues[1] }
                 .toSet()
+        val applicationId = android.defaultConfig.applicationId.orEmpty()
         val allowed =
             setOf(
                 "android.permission.INTERNET",
                 "android.permission.ACCESS_NETWORK_STATE",
-                "app.jellystack.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+                "android.permission.RECORD_AUDIO",
+                "$applicationId.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
             )
         check((permissions - allowed).isEmpty()) {
             "TV manifest contains permissions outside the TV allowlist: ${permissions - allowed}"
@@ -48,11 +50,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.jellystack.mobile"
+        applicationId = "com.dongpiandi.videopro"
         minSdk = 24
         targetSdk = 36
-        versionCode = 33
-        versionName = "0.17.2"
+        versionCode = 6
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -137,6 +139,7 @@ dependencies {
     implementation(projects.sharedCore)
     implementation(projects.sharedNetwork)
     implementation(projects.sharedDatabase)
+    implementation(projects.dongpianData)
     implementation(projects.players)
     implementation(projects.designTv)
 
@@ -158,9 +161,12 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.test.espresso)
+    androidTestImplementation(libs.androidx.test.uiautomator)
+    androidTestImplementation(kotlin("test"))
     androidTestImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)
 }

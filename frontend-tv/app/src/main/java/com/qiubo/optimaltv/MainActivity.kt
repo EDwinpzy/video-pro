@@ -320,7 +320,7 @@ private fun AppRoot(
     val debugRoute = if (com.qiubo.optimaltv.BuildConfig.DEBUG) {
         when (val requested = DebugNavBus.pendingRoute) {
             "favorites" -> "me"
-            "movie", "series", "anime", "short", "variety", "search", "me" -> requested
+            "home", "movie", "series", "anime", "short", "variety", "search", "me" -> requested
             else -> null
         }
     } else null

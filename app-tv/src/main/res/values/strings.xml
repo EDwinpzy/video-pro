@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Jellystack</string>
-    <string name="tv_voice_search_prompt">Search Jellystack</string>
+    <string name="app_name">Video Pro</string>
+    <string name="tv_voice_search_prompt">搜索 Video Pro</string>
+    <string name="system_dictation_service_label">Video Pro 系统语音听写</string>
+    <string name="system_dictation_service_description">在输入框激活时按住遥控器语音键，松开后把识别文字写入当前输入框。不读取屏幕内容，不打开语音助手。</string>
+    <string name="system_dictation_permission_required">请先在 Video Pro 中允许麦克风权限。</string>
+    <string name="system_dictation_engine_unavailable">当前设备没有可用的原厂语音识别引擎。</string>
+    <string name="system_dictation_failed">语音识别失败，请重试。</string>
+    <string name="system_dictation_timeout">没有识别到语音，请重试。</string>
+    <string name="system_dictation_microphone_denied">未获得麦克风权限，系统语音听写尚未开启。</string>
+    <string name="system_dictation_android13_required">系统语音听写需要 Android 13 或更高版本。</string>
+    <string name="system_dictation_open_settings_failed">无法打开系统无障碍设置。</string>
 </resources>

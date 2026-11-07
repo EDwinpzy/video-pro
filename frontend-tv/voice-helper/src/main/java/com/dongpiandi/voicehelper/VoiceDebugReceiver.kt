@@ -3,6 +3,8 @@ package com.dongpiandi.voicehelper
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import com.dongpiandi.voice.core.SystemDictationRecognizerFactory
 import com.dongpiandi.voicehelper.assistant.AssistantConfigStore
 
 /**
@@ -31,6 +33,30 @@ class VoiceDebugReceiver : BroadcastReceiver() {
                 val down = intent.getBooleanExtra(EXTRA_DOWN, false)
                 VoiceGatewayService.pressVoiceKeyForTest(down)
             }
+            ACTION_INJECT_PCM ->
+                Thread(
+                    {
+                        runCatching {
+                            val clear = intent.getBooleanExtra(EXTRA_CLEAR_PCM, false)
+                            val pcm =
+                                if (clear) {
+                                    null
+                                } else {
+                                    context.assets
+                                        .open(QA_PCM_ASSET)
+                                        .use { it.readBytes() }
+                                }
+                            val recognizer = SystemDictationRecognizerFactory.create(context)
+                            recognizer.javaClass
+                                .getMethod("useInjectedPcmForTest", ByteArray::class.java)
+                                .invoke(recognizer, pcm)
+                            Log.i(TAG, "qa pcm ${if (pcm == null) "cleared" else "injected bytes=${pcm.size}"}")
+                        }.onFailure { error ->
+                            Log.w(TAG, "qa pcm injection failed: ${error.javaClass.simpleName}")
+                        }
+                    },
+                    "voice-helper-qa-pcm",
+                ).start()
         }
     }
 
@@ -39,9 +65,13 @@ class VoiceDebugReceiver : BroadcastReceiver() {
         const val ACTION_CANCEL = "com.dongpiandi.voicehelper.DEBUG_CANCEL"
         const val ACTION_CONFIGURE = "com.dongpiandi.voicehelper.DEBUG_CONFIGURE"
         const val ACTION_PRESS_VOICE = "com.dongpiandi.voicehelper.DEBUG_PRESS_VOICE"
+        const val ACTION_INJECT_PCM = "com.dongpiandi.voicehelper.DEBUG_INJECT_PCM"
         const val EXTRA_BASE_URL = "base_url"
         const val EXTRA_API_KEY = "api_key"
         const val EXTRA_TEXT = "text"
         const val EXTRA_DOWN = "down"
+        const val EXTRA_CLEAR_PCM = "clear_pcm"
+        private const val TAG = "VoiceHelperDebug"
+        private const val QA_PCM_ASSET = "dictation_zh_16k.pcm"
     }
 }

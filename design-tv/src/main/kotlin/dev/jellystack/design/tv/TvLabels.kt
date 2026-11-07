@@ -11,7 +11,7 @@ import dev.jellystack.core.server.ServerType
 import dev.jellystack.players.PlaybackMode
 
 // Product and service names are the same in every language, so they are constants rather than strings.
-internal const val TV_BRAND_JELLYSTACK = "Jellystack"
+internal const val TV_BRAND_VIDEO_PRO = "Video Pro"
 internal const val TV_BRAND_JELLYFIN = "Jellyfin"
 internal const val TV_BRAND_SEERR = "Seerr"
 internal const val TV_BRAND_TMDB = "TMDB"

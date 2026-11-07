@@ -2,8 +2,7 @@ package app.jellystack.tv
 
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
@@ -22,13 +21,11 @@ class TvProductionRootSmokeTest {
 
     @Test
     fun coldLaunchAndRecreationKeepProductionRootFocusable() {
-        composeRule.onNodeWithText("Connect Jellyfin").assertExists()
-        composeRule.onNodeWithContentDescription("Quick Connect").assertIsFocused()
+        composeRule.onNodeWithTag("video-pro-login-account").assertExists().assertIsFocused()
 
         composeRule.activityRule.scenario.recreate()
 
-        composeRule.onNodeWithText("Connect Jellyfin").assertExists()
-        composeRule.onNodeWithContentDescription("Quick Connect").assertIsFocused()
+        composeRule.onNodeWithTag("video-pro-login-account").assertExists().assertIsFocused()
     }
 }
 

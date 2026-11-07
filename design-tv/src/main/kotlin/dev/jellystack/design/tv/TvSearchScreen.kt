@@ -340,7 +340,7 @@ private fun tvSearchFocusLocations(
         // The header targets are always composed; materializing them scrolls the results back to the top.
         put(TV_SEARCH_QUERY_TARGET, TvLazyFocusLocation(0))
         if (searchState.showVoiceAction) put(TV_SEARCH_VOICE_TARGET, TvLazyFocusLocation(0))
-        TvSearchSource.entries.forEach { put(tvSearchSourceTargetId(it.name.lowercase()), TvLazyFocusLocation(0)) }
+        TV_SEARCH_VISIBLE_SOURCES.forEach { put(tvSearchSourceTargetId(it.name.lowercase()), TvLazyFocusLocation(0)) }
         indices.jellyfinFailure?.let { put(TV_SEARCH_JELLYFIN_RETRY_TARGET, TvLazyFocusLocation(it)) }
         indices.jellyfinRow?.let { rowIndex ->
             presentation.jellyfinItems.forEachIndexed { index, item ->
@@ -422,7 +422,7 @@ private fun TvSearchSourceChips(
     actions: TvSearchActions,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        TvSearchSource.entries.forEachIndexed { index, source ->
+        TV_SEARCH_VISIBLE_SOURCES.forEachIndexed { index, source ->
             val label =
                 when (source) {
                     TvSearchSource.ALL -> strings.all
@@ -454,6 +454,8 @@ private fun TvSearchSourceChips(
         }
     }
 }
+
+private val TV_SEARCH_VISIBLE_SOURCES = listOf(TvSearchSource.ALL, TvSearchSource.JELLYFIN)
 
 @Composable
 internal fun TvSearchSourceFailure(

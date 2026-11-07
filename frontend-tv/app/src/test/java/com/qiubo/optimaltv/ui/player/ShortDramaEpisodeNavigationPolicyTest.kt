@@ -20,7 +20,6 @@ class ShortDramaEpisodeNavigationPolicyTest {
     @Test
     fun overlaysAndLiveOrErrorStatesKeepTheirOwnDpadFocus() {
         assertTrue(canIntercept())
-        assertFalse(canIntercept(controlsVisible = true))
         assertFalse(canIntercept(panelOpen = true))
         assertFalse(canIntercept(dialogOpen = true))
         assertFalse(canIntercept(isLive = true))
@@ -101,7 +100,6 @@ class ShortDramaEpisodeNavigationPolicyTest {
                 downTimeMs = 100,
                 currentEpisode = 0,
                 episodeCount = 3,
-                controlsVisible = false,
                 panelOpen = false,
                 dialogOpen = false,
                 isLive = false,
@@ -113,14 +111,12 @@ class ShortDramaEpisodeNavigationPolicyTest {
 
     private fun canIntercept(
         categoryId: String = "douban:short",
-        controlsVisible: Boolean = false,
         panelOpen: Boolean = false,
         dialogOpen: Boolean = false,
         isLive: Boolean = false,
         hasFatalError: Boolean = false,
     ): Boolean = ShortDramaEpisodeNavigationPolicy.canIntercept(
         categoryId = categoryId,
-        controlsVisible = controlsVisible,
         panelOpen = panelOpen,
         dialogOpen = dialogOpen,
         isLive = isLive,
@@ -133,7 +129,6 @@ class ShortDramaEpisodeNavigationPolicyTest {
         categoryId: String = "douban:short",
         repeatCount: Int = 0,
         downTimeMs: Long = 100,
-        controlsVisible: Boolean = false,
         panelOpen: Boolean = false,
         dialogOpen: Boolean = false,
         switchingEpisode: Boolean = false,
@@ -145,7 +140,6 @@ class ShortDramaEpisodeNavigationPolicyTest {
         downTimeMs = downTimeMs,
         currentEpisode = currentEpisode,
         episodeCount = 3,
-        controlsVisible = controlsVisible,
         panelOpen = panelOpen,
         dialogOpen = dialogOpen,
         isLive = false,
@@ -163,7 +157,6 @@ class ShortDramaEpisodeNavigationPolicyTest {
         downTimeMs = 100,
         currentEpisode = 1,
         episodeCount = 3,
-        controlsVisible = false,
         panelOpen = false,
         dialogOpen = false,
         isLive = false,

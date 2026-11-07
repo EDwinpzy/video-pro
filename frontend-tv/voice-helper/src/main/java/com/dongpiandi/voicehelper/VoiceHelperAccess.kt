@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityManager
 internal object VoiceHelperAccess {
     enum class EnableRequest {
         ALREADY_ENABLED,
+        CONFLICT_REMAINS,
         VENDOR_REQUESTED,
         SETTINGS_OPENED,
         UNAVAILABLE,
@@ -48,6 +49,9 @@ internal object VoiceHelperAccess {
 
     fun requestEnable(context: Context): EnableRequest {
         if (isEnabled(context)) return EnableRequest.ALREADY_ENABLED
+        if (conflictingDictationEnabled(context)) {
+            return EnableRequest.CONFLICT_REMAINS
+        }
         if (requestVendorEnable(context)) return EnableRequest.VENDOR_REQUESTED
         return if (openSettings(context)) {
             EnableRequest.SETTINGS_OPENED

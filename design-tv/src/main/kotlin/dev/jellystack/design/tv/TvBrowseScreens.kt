@@ -137,6 +137,15 @@ internal fun tvHomeFirstCardTopDp(): Int = (TV_CINEMATIC_ROWS_TOP + TV_HOME_ROW_
 
 internal enum class TvSearchSource { ALL, JELLYFIN, SEERR }
 
+internal fun tvVisibleHomeSections(homeSections: HomeSectionsState): List<HomeSection> =
+    (homeSections as? HomeSectionsState.Ready)
+        ?.sections
+        .orEmpty()
+        .mapNotNull { section ->
+            val visibleItems = section.items.filterNot { it.action == HomeSectionAction.SEERR }
+            section.copy(items = visibleItems).takeIf { visibleItems.isNotEmpty() }
+        }.distinctBy { it.id }
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TvHomeScreen(
@@ -167,12 +176,7 @@ internal fun TvHomeScreen(
             buildTvHomeHeroPresentation(state, homeSections, Clock.System.now())
         }
     val heroCandidates = heroPresentation.candidates
-    val visibleSections =
-        (homeSections as? HomeSectionsState.Ready)
-            ?.sections
-            .orEmpty()
-            .filter { it.items.isNotEmpty() }
-            .distinctBy { it.id }
+    val visibleSections = tvVisibleHomeSections(homeSections)
     val focusRows =
         remember(visibleSections, homeSections, state.continueWatching, state.nextUp, state.libraries, myList) {
             buildList {

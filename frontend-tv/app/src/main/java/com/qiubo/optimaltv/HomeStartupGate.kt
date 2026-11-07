@@ -172,7 +172,7 @@ private fun StartupLoadingScreen(
 
 private suspend fun prepareHomeEntry(revalidate: Boolean) = coroutineScope {
     val categories = listOf("movie", "tv", "anime", "short", "variety")
-    preloadHomeTabs(
+    preloadHomeTabs<TvImagePreload>(
         categories = categories,
         loadTab = { category ->
             retryStartupLoad(
@@ -185,29 +185,20 @@ private suspend fun prepareHomeEntry(revalidate: Boolean) = coroutineScope {
             ) {
                 val firstRow = Graph.repo.loadHomeFirstSection(category, revalidate = revalidate)
                 OtvLog.i("startup first_section_loaded category=$category items=${firstRow.size}")
-                firstRow
-                    .take(STARTUP_FIRST_SECTION_ARTWORK_LIMIT)
-                    .map { TvImagePreload(it.posterUrl, false) }
-            }
-        },
-        loadArtwork = { cards ->
-            val history = Graph.db.vodDao().historyFlow(Int.MAX_VALUE).first()
-            val heroPreviews =
-                history.asSequence()
-                    .sortedByDescending { it.updatedAt }
-                    .distinctBy { it.vodId }
-                    .take(STARTUP_HERO_PREVIEW_LIMIT)
-                    .map { TvImagePreload(it.posterUrl, true) }
-                    .toList()
-            val firstRowArtwork = cards.filter { it.url.isNotBlank() }.distinct()
-            if (heroPreviews.isNotEmpty()) {
-                Graph.appScope.launch {
-                    preloadAllHomeArtwork(
-                        images = heroPreviews.filter { it.url.isNotBlank() }.distinct(),
-                        requireAll = false,
+                buildList<TvImagePreload> {
+                    firstRow.firstOrNull { it.heroUrl.isNotBlank() }?.let {
+                        add(TvImagePreload(it.heroUrl, true))
+                    }
+                    addAll(
+                        firstRow
+                            .take(STARTUP_FIRST_SECTION_ARTWORK_LIMIT)
+                            .map { TvImagePreload(it.posterUrl, false) },
                     )
                 }
             }
+        },
+        loadArtwork = { cards ->
+            val firstRowArtwork = cards.filter { it.url.isNotBlank() }.distinct()
             preloadAllHomeArtwork(firstRowArtwork)
         },
         onTabReady = { _, _ -> },
@@ -216,7 +207,6 @@ private suspend fun prepareHomeEntry(revalidate: Boolean) = coroutineScope {
 
 /** Enough cards to fill the first visible two-row section on a 1080p TV. */
 private const val STARTUP_FIRST_SECTION_ARTWORK_LIMIT = 12
-private const val STARTUP_HERO_PREVIEW_LIMIT = 5
 
 private fun failureDiagnostics(failure: Exception): String {
     val authFailure = failure as? DongpianAuthException

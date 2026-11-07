@@ -74,6 +74,7 @@ import dev.jellystack.core.jellyseerr.JellyseerrRecommendationsState
 import dev.jellystack.core.jellyseerr.JellyseerrRepository
 import dev.jellystack.core.jellyseerr.JellyseerrRequestsCoordinator
 import dev.jellystack.core.jellyseerr.JellyseerrSearchItem
+import dev.jellystack.core.preferences.AppLanguage
 import dev.jellystack.core.preferences.AppSettingsRepository
 import dev.jellystack.core.profile.ActiveProfileRepository
 import dev.jellystack.core.profile.HouseholdProfile
@@ -136,7 +137,6 @@ fun TvJellystackRoot(
     stopPlayback: () -> Unit,
     modifier: Modifier = Modifier,
     coldLaunch: Boolean = true,
-    voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
     onExitConfirmed: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
@@ -147,7 +147,7 @@ fun TvJellystackRoot(
         motionPreference = settings.motionPreference,
         highContrastFocus = settings.highContrastFocus,
     ) {
-        val strings = remember(settings.appLanguage) { TvStrings.current(settings.appLanguage) }
+        val strings = remember { TvStrings.current(AppLanguage.SYSTEM) }
         TvProfileHost(
             playbackController = playbackController,
             playerEngine = playerEngine,
@@ -159,7 +159,6 @@ fun TvJellystackRoot(
             strings = strings,
             stopPlayback = stopPlayback,
             coldLaunch = coldLaunch,
-            voiceSearch = voiceSearch,
             onExitConfirmed = onExitConfirmed,
             modifier = modifier,
         )
@@ -179,7 +178,6 @@ private fun TvProfileHost(
     strings: TvStrings,
     stopPlayback: () -> Unit,
     coldLaunch: Boolean,
-    voiceSearch: TvVoiceSearchPort,
     onExitConfirmed: () -> Unit,
     modifier: Modifier,
 ) {
@@ -709,10 +707,8 @@ private fun TvProfileHost(
                     serverRepository = serverRepository,
                     strings = strings,
                     stopPlayback = stopPlayback,
-                    activeProfileName = selectedProfile.displayName,
                     activeProfileId = selectedProfile.id,
                     activeProfileGeneration = generation,
-                    onOpenProfiles = ::openProfilePicker,
                     onAuthenticationExpired = {
                         // Parallel reports start the recovery once; only a successful sign-in lifts the mark.
                         if (sessionRecovery.markExpired(selectedProfile.id)) {
@@ -727,7 +723,6 @@ private fun TvProfileHost(
                             }
                         }
                     },
-                    voiceSearch = voiceSearch,
                     onExitConfirmed = onExitConfirmed,
                 )
         }
@@ -772,12 +767,9 @@ private fun TvAuthenticatedApp(
     serverRepository: ServerRepository,
     strings: TvStrings,
     stopPlayback: () -> Unit,
-    activeProfileName: String = strings.profiles,
     activeProfileId: String? = null,
     activeProfileGeneration: Long = 0L,
-    onOpenProfiles: () -> Unit = {},
     onAuthenticationExpired: () -> Unit = {},
-    voiceSearch: TvVoiceSearchPort = UnsupportedTvVoiceSearch,
     onExitConfirmed: () -> Unit = {},
 ) {
     val koin = remember { JellystackDI.koin }
@@ -1042,26 +1034,23 @@ private fun TvAuthenticatedApp(
             mutableStateOf(TvSearchMode.EDIT.name)
         }
     val searchCoordinator =
-        remember(accountGeneration, scope, browseRepository, seerrRepository, seerrEnvironmentProvider, voiceSearch) {
+        remember(accountGeneration, scope, browseRepository) {
             TvSearchCoordinator(
                 scope = scope,
                 initialSession =
                     TvSearchSessionState(
                         query = savedSearchQuery,
-                        source = TvSearchSource.entries.firstOrNull { it.name == savedSearchSource } ?: TvSearchSource.ALL,
+                        source =
+                            TvSearchSource.entries
+                                .firstOrNull { it.name == savedSearchSource && it != TvSearchSource.SEERR }
+                                ?: TvSearchSource.ALL,
                         mode = TvSearchMode.entries.firstOrNull { it.name == savedSearchMode } ?: TvSearchMode.EDIT,
                     ),
-                voiceSearch = voiceSearch,
+                voiceSearch = UnsupportedTvVoiceSearch,
                 sources =
                     TvSearchSources(
                         jellyfin = browseRepository::searchItems,
-                        seerr = { query ->
-                            seerrEnvironmentProvider
-                                .current()
-                                ?.let { environment ->
-                                    seerrRepository.search(environment, query)
-                                }.orEmpty()
-                        },
+                        seerr = { emptyList() },
                     ),
             )
         }
@@ -1157,12 +1146,12 @@ private fun TvAuthenticatedApp(
     LaunchedEffect(
         accountGeneration,
         settings.useServerHomeSections,
-        settings.appLanguage,
+        TV_APP_LANGUAGE_TAG,
         serverRepository.currentServers(),
     ) {
         homeSectionsRepository.refresh(
             enabledByUser = settings.useServerHomeSections,
-            language = settings.appLanguage.languageTag,
+            language = TV_APP_LANGUAGE_TAG,
         )
     }
     LaunchedEffect(accountGeneration, serverRepository.currentServers()) {
@@ -1172,7 +1161,8 @@ private fun TvAuthenticatedApp(
         syncPlay.updateAccess(syncPlayAccess)
     }
     LaunchedEffect(settings.trailerPreviewsEnabled) {
-        trailerPreviewCoordinator.setEnabled(settings.trailerPreviewsEnabled)
+        // Automatic trailer previews are outside the Video Pro V1 scope.
+        trailerPreviewCoordinator.setEnabled(false)
     }
     LaunchedEffect(settings.trailerPreviewSoundEnabled) {
         trailerPreviewCoordinator.setSoundEnabled(settings.trailerPreviewSoundEnabled)
@@ -1213,7 +1203,7 @@ private fun TvAuthenticatedApp(
         browseCoordinator.refreshHomeFeeds()
         homeSectionsRepository.refresh(
             enabledByUser = settings.useServerHomeSections,
-            language = settings.appLanguage.languageTag,
+            language = TV_APP_LANGUAGE_TAG,
             silent = true,
         )
     }
@@ -1453,7 +1443,7 @@ private fun TvAuthenticatedApp(
                                             onHomeLibrary = ::openLibrary,
                                             onLibrary = { openLibrary(it.id, it.name) },
                                             onSeerrItem = ::openSeerr,
-                                            myList = myList,
+                                            myList = myList.filter { it.available },
                                             onMyListEntry = { entry ->
                                                 entry.jellyfinItem?.let(::openJellyfinDetail)
                                                     ?: entry.savedMedia?.toTvRoute()?.let(::push)
@@ -1529,18 +1519,7 @@ private fun TvAuthenticatedApp(
                                             actions = tvSearchActions(searchCoordinator, ::openJellyfinDetail, ::openSeerr),
                                         )
                                     TvRoute.Discover ->
-                                        TvDiscoverScreen(
-                                            recommendations,
-                                            requests,
-                                            strings,
-                                            focusMemory,
-                                            ::openSeerr,
-                                            onConnectSeerr = ::openSettingsConnections,
-                                            onRetry = recommendationsCoordinator::refreshAll,
-                                            isSaved = { item ->
-                                                savedMedia.any { it.identity == item.mediaIdentity() }
-                                            },
-                                        )
+                                        TvPlaylistsScreen(strings)
                                     is TvRoute.Settings ->
                                         TvSettingsScreen(
                                             section = route.section,
@@ -1658,10 +1637,8 @@ private fun TvAuthenticatedApp(
                     selected = currentRoute,
                     expanded = appUiState.railExpanded,
                     strings = strings,
-                    profileName = activeProfileName,
                     callbacks =
                         TvNavigationRailCallbacks(
-                            onProfile = onOpenProfiles,
                             onSelected = { route ->
                                 selectTopLevel(route)
                                 focusCoordinator.onUserMovement()

@@ -100,14 +100,14 @@ internal class TvSearchCoordinator(
 
     fun search(rawQuery: String) {
         restoredQuerySubmitted = true
-        submitQuery(rawQuery, SearchTargets.BOTH)
+        submitQuery(rawQuery, SearchTargets.JELLYFIN)
     }
 
     fun restoreQuery(rawQuery: String) {
         val query = rawQuery.trim()
         if (query.isEmpty() || restoredQuerySubmitted) return
         restoredQuerySubmitted = true
-        submitQuery(query, SearchTargets.BOTH)
+        submitQuery(query, SearchTargets.JELLYFIN)
     }
 
     fun selectSource(source: TvSearchSource) = updateSession { it.copy(source = source) }
@@ -149,7 +149,7 @@ internal class TvSearchCoordinator(
                 mutableState.value = mutableState.value.copy(isVoiceListening = false, voiceError = null)
                 val query = result.text.trim()
                 if (query.isNotEmpty()) {
-                    submitQuery(query, SearchTargets.BOTH)
+                    submitQuery(query, SearchTargets.JELLYFIN)
                     enterBrowseMode()
                 }
             }

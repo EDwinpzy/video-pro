@@ -107,7 +107,7 @@ internal fun TvConnectionScreen(
                             baseUrl = baseUrl,
                             serverId = existingServerId,
                             appVersion = appVersion,
-                            deviceName = "Jellystack TV",
+                            deviceName = "$TV_BRAND_VIDEO_PRO TV",
                             refreshExistingAccount = refreshExistingAccount,
                         ),
                     ).collect { next ->
@@ -135,7 +135,7 @@ internal fun TvConnectionScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(0.85f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(TV_BRAND_JELLYSTACK, color = TvText, fontSize = 50.sp, fontWeight = FontWeight.Bold)
+                Text(TV_BRAND_VIDEO_PRO, color = TvText, fontSize = 50.sp, fontWeight = FontWeight.Bold)
                 Text(
                     strings.tvTagline,
                     color = TvTextMuted,

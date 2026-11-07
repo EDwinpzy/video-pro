@@ -35,7 +35,7 @@ class TvSettingsCategoryTest {
     @Test
     fun categoriesOwnOnlyTheirExpectedControlKeys() {
         assertEquals(
-            listOf("language", "home-sections"),
+            listOf("home-sections"),
             tvSettingsControlKeys(TvSettingsCategory.APPEARANCE),
         )
         assertEquals(
@@ -47,8 +47,6 @@ class TvSettingsCategoryTest {
                 "seek-forward",
                 "playback-speed",
                 "stats",
-                "trailer-previews",
-                "trailer-preview-sound",
             ),
             tvSettingsControlKeys(TvSettingsCategory.PLAYBACK),
         )

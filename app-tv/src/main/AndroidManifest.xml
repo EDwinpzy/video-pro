@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission
         android:name="android.permission.READ_PHONE_STATE"
         tools:node="remove" />
@@ -23,21 +24,29 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <queries>
-        <intent>
-            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
-        </intent>
-    </queries>
-
     <application
         android:name=".JellystackTvApplication"
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.Jellystack.TV"
-        android:usesCleartextTraffic="true">
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.VideoPro.TV"
+        android:use32bitAbi="true"
+        android:usesCleartextTraffic="false">
         <profileable android:shell="true" />
+        <service
+            android:name=".SystemDictationService"
+            android:exported="true"
+            android:label="@string/system_dictation_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/system_dictation_service" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:banner="@drawable/tv_banner"

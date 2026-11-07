@@ -92,10 +92,24 @@ tasks.register("generateThirdPartyReport") {
 
 val verifyUniqueAndroidVersionCodes by tasks.registering {
     group = "verification"
-    description = "Prevents mobile and TV store artifacts from sharing a version code."
+    description = "Prevents store artifacts with the same application ID from sharing a version code."
     doLast {
         val mobileBuild = file("app-android/build.gradle.kts").readText()
         val tvBuild = file("app-tv/build.gradle.kts").readText()
+        val applicationIdPattern = Regex("""applicationId\s*=\s*"([^"]+)"""")
+        val mobileApplicationId =
+            applicationIdPattern
+                .find(mobileBuild)
+                ?.groupValues
+                ?.get(1)
+                ?: error("Mobile applicationId is missing")
+        val tvApplicationId =
+            applicationIdPattern
+                .find(tvBuild)
+                ?.groupValues
+                ?.get(1)
+                ?: error("TV applicationId is missing")
+        if (mobileApplicationId != tvApplicationId) return@doLast
         val pattern = Regex("""versionCode\s*=\s*(\d+)""")
         val mobileCode =
             pattern
@@ -113,9 +127,6 @@ val verifyUniqueAndroidVersionCodes by tasks.registering {
                 ?: error("TV versionCode is missing")
         check(mobileCode != tvCode) {
             "Mobile and TV versionCode must be globally unique: $mobileCode"
-        }
-        check(tvCode > mobileCode) {
-            "The first TV versionCode must be newer than mobile: mobile=$mobileCode tv=$tvCode"
         }
     }
 }

@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -41,7 +42,7 @@ class OpenAiChatClientTest {
     }
 
     @Test
-    fun successfulFirstModelSendsExpectedRequestAndParsesStringContent() = runBlocking {
+    fun successfulFirstModelSendsResponsesWebSearchRequest() = runBlocking {
         server.enqueue(successResponse("\"晴，适合出门。\""))
 
         val result =
@@ -59,18 +60,37 @@ class OpenAiChatClientTest {
 
         val request = requireRequest()
         assertEquals("POST", request.method)
-        assertEquals("/v1/chat/completions", request.path)
+        assertEquals("/v1/responses", request.path)
         assertEquals("Bearer secret-token", request.getHeader("Authorization"))
         val body = JSONObject(request.body.readUtf8())
         assertEquals("group/free", body.getString("model"))
+        assertTrue(body.getString("instructions").contains("回答简洁。"))
+        assertTrue(body.getString("instructions").contains("web_search"))
+        assertFalse(body.getBoolean("store"))
         assertFalse(body.getBoolean("stream"))
-        assertEquals(OpenAiChatClient.TEMPERATURE, body.getDouble("temperature"), 0.0)
-        val messages = body.getJSONArray("messages")
-        assertEquals(2, messages.length())
-        assertEquals("system", messages.getJSONObject(0).getString("role"))
-        assertEquals("回答简洁。", messages.getJSONObject(0).getString("content"))
-        assertEquals("user", messages.getJSONObject(1).getString("role"))
-        assertEquals("今天天气怎么样？", messages.getJSONObject(1).getString("content"))
+        assertFalse(body.getBoolean("parallel_tool_calls"))
+        assertEquals("auto", body.getString("tool_choice"))
+        assertEquals(OpenAiChatClient.MAX_SEARCH_CALLS, body.getInt("max_tool_calls"))
+        assertEquals(
+            OpenAiChatClient.MAX_OUTPUT_TOKENS,
+            body.getInt("max_output_tokens"),
+        )
+        assertFalse(body.has("messages"))
+
+        val input = body.getJSONArray("input")
+        assertEquals(1, input.length())
+        val userMessage = input.getJSONObject(0)
+        assertEquals("user", userMessage.getString("role"))
+        val content = userMessage.getJSONArray("content")
+        assertEquals(1, content.length())
+        assertEquals("input_text", content.getJSONObject(0).getString("type"))
+        assertEquals("今天天气怎么样？", content.getJSONObject(0).getString("text"))
+
+        val tools = body.getJSONArray("tools")
+        assertEquals(1, tools.length())
+        assertEquals("web_search", tools.getJSONObject(0).getString("type"))
+        assertTrue(tools.getJSONObject(0).getBoolean("external_web_access"))
+        assertEquals("low", tools.getJSONObject(0).getString("search_context_size"))
     }
 
     @Test
@@ -108,13 +128,15 @@ class OpenAiChatClientTest {
                 val second = isolated.takeRequest(2, TimeUnit.SECONDS)
                 assertNotNull(first)
                 assertNotNull(second)
+                assertEquals("/v1/responses", first!!.path)
+                assertEquals("/v1/responses", second!!.path)
                 assertEquals(
                     "group/free",
-                    JSONObject(first!!.body.readUtf8()).getString("model"),
+                    JSONObject(first.body.readUtf8()).getString("model"),
                 )
                 assertEquals(
                     "auto/deepseek-v4.1-flash",
-                    JSONObject(second!!.body.readUtf8()).getString("model"),
+                    JSONObject(second.body.readUtf8()).getString("model"),
                 )
             } finally {
                 isolated.shutdown()
@@ -163,7 +185,24 @@ class OpenAiChatClientTest {
     }
 
     @Test
-    fun emptyContentRetriesTheSecondModel() = runBlocking {
+    fun slowFirstAttemptFallsBackWithoutWaitingForTheGlobalCallTimeout() = runBlocking {
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        server.enqueue(successResponse("\"fast fallback\""))
+
+        val startedAt = System.nanoTime()
+        val result =
+            newClient(attemptTimeoutsMs = listOf(150L, 2_000L))
+                .complete("question")
+        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+
+        assertEquals("fast fallback", result.answer)
+        assertEquals(OpenAiChatClient.DEFAULT_MODELS[1], result.model)
+        assertEquals(2, server.requestCount)
+        assertTrue("fallback took ${elapsedMs}ms", elapsedMs < 2_000L)
+    }
+
+    @Test
+    fun emptyMessageRetriesTheSecondModel() = runBlocking {
         server.enqueue(successResponse("\"   \""))
         server.enqueue(successResponse("\"second answer\""))
 
@@ -192,12 +231,12 @@ class OpenAiChatClientTest {
     }
 
     @Test
-    fun invalidJsonShapeRetriesTheSecondModel() = runBlocking {
+    fun invalidResponsesShapeRetriesTheSecondModel() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
                 .setHeader("Content-Type", "application/json")
-                .setBody("""{"choices":[]}"""),
+                .setBody("""{"status":"completed","output":[]}"""),
         )
         server.enqueue(successResponse("\"second answer\""))
 
@@ -250,33 +289,68 @@ class OpenAiChatClientTest {
     }
 
     @Test
-    fun arrayContentIsJoinedWithoutExposingRawJson() = runBlocking {
+    fun messagePartsAreJoinedWithoutExposingReasoningItems() = runBlocking {
+        val output =
+            JSONArray()
+                .put(
+                    JSONObject()
+                        .put("type", "reasoning")
+                        .put("summary", "private reasoning"),
+                )
+                .put(
+                    JSONObject()
+                        .put("type", "web_search_call")
+                        .put("status", "completed"),
+                )
+                .put(
+                    JSONObject()
+                        .put("type", "message")
+                        .put(
+                            "content",
+                            JSONArray()
+                                .put(
+                                    JSONObject()
+                                        .put("type", "output_text")
+                                        .put("text", "你"),
+                                )
+                                .put(
+                                    JSONObject()
+                                        .put("type", "output_text")
+                                        .put("text", "好"),
+                                ),
+                        ),
+                )
         server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody(
-                    """
-                    {
-                      "choices": [
-                        {
-                          "message": {
-                            "content": [
-                              {"type": "text", "text": "你"},
-                              {"type": "text", "text": "好"}
-                            ]
-                          }
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                ),
+            jsonResponse(
+                JSONObject()
+                    .put("status", "completed")
+                    .put("output", output),
+            ),
         )
 
         val result = newClient().complete("question")
 
         assertEquals("你好", result.answer)
         assertEquals(OpenAiChatClient.DEFAULT_MODELS[0], result.model)
+        assertTrue(result.usedWebSearch)
+        assertFalse(result.answer.contains("private reasoning"))
+    }
+
+    @Test
+    fun topLevelOutputTextIsAccepted() = runBlocking {
+        server.enqueue(
+            jsonResponse(
+                JSONObject()
+                    .put("status", "completed")
+                    .put("output_text", "直接回答"),
+            ),
+        )
+
+        val result = newClient().complete("question")
+
+        assertEquals("直接回答", result.answer)
+        assertEquals(OpenAiChatClient.DEFAULT_MODELS[0], result.model)
+        assertEquals(1, server.requestCount)
     }
 
     @Test
@@ -390,10 +464,12 @@ class OpenAiChatClientTest {
             OkHttpClient.Builder()
                 .retryOnConnectionFailure(false)
                 .build(),
+        attemptTimeoutsMs: List<Long> = OpenAiChatClient.DEFAULT_ATTEMPT_TIMEOUTS_MS,
     ): OpenAiChatClient =
         OpenAiChatClient(
             configProvider = { config },
             httpClient = httpClient,
+            attemptTimeoutsMs = attemptTimeoutsMs,
         )
 
     private fun config(
@@ -407,23 +483,32 @@ class OpenAiChatClientTest {
             systemPrompt = systemPrompt,
         )
 
-    private fun successResponse(contentJson: String): MockResponse =
+    private fun successResponse(textJson: String): MockResponse {
+        val output =
+            JSONArray().put(
+                JSONObject()
+                    .put("type", "message")
+                    .put(
+                        "content",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("type", "output_text")
+                                .put("text", JSONObject("""{"text":$textJson}""").getString("text")),
+                        ),
+                    ),
+            )
+        return jsonResponse(
+            JSONObject()
+                .put("status", "completed")
+                .put("output", output),
+        )
+    }
+
+    private fun jsonResponse(body: JSONObject): MockResponse =
         MockResponse()
             .setResponseCode(200)
             .setHeader("Content-Type", "application/json")
-            .setBody(
-                """
-                {
-                  "choices": [
-                    {
-                      "message": {
-                        "content": $contentJson
-                      }
-                    }
-                  ]
-                }
-                """.trimIndent(),
-            )
+            .setBody(body.toString())
 
     private fun requireRequest() =
         checkNotNull(server.takeRequest(2, TimeUnit.SECONDS)) {

@@ -29,6 +29,7 @@ include(
     ":shared-core",
     ":shared-network",
     ":shared-database",
+    ":dongpian-data",
     ":players",
     ":players-cast-google",
     ":design",

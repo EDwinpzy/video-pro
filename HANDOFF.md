@@ -34,8 +34,9 @@ Jellystack，业务后端继续使用懂片帝官方服务，不另建媒体后�
 - Jellystack 上游基线：`c6eef175c09c4c413aeede37888f4f8ce978b9a2`
 - 目标 applicationId：`com.dongpiandi.videopro`
 
-当前仓库已经导入 Jellystack 的完整源码和上游 Git 历史，但还没有开始替换
-Jellyfin/Seerr 页面，也没有把懂片帝数据层接入这个新仓库。
+当前仓库已导入 Jellystack 的完整源码和上游 Git 历史，并完成第一版
+Video Pro TV 根界面与懂片帝数据层接入。新的启动入口不再经过 Jellyfin
+ProfileHost；旧 Jellyfin/Seerr 深层代码仍保留在仓库中，等待后续清理。
 
 ## 3. 许可证和发布边界
 
@@ -58,10 +59,10 @@ Jellystack 使用 GPL-3.0。修改后再分发时，衍生应用必须遵守 GPL
 | 中文迁移计划 | 已写入 `PROJECT_PLAN.md` |
 | 懂片帝官方 API 逆向 | 已完成账号、片库、播放、历史、续播主链路 |
 | 独立 Android 原型 | 已能在真实模拟器登录、播放和跨设备同步 |
-| Video Pro 数据层替换 | 未开始 |
-| Video Pro 中文 UI | 未开始 |
-| Seerr/Jellyfin 页面删除 | 未开始 |
-| Video Pro TV 构建和截图测试 | 未开始 |
+| Video Pro 数据层替换 | 首版完成：签名、会话、首页、片库、搜索、详情、选集、片单、播放线路、历史/收藏/同步合同 |
+| Video Pro 中文 UI | 主链路完成：登录、五路导航、首页、片库、搜索、片单、我的、详情、选集 |
+| Seerr/Jellyfin 页面删除 | 启动入口和可见导航已切断；深层共享代码尚未删除 |
+| Video Pro TV 构建和截图测试 | `assembleDebug`、静态检查、单测、真机 connected tests 通过；TV 参考截图尚未更新 |
 
 ## 5. 已有懂片帝逆向成果
 
@@ -329,7 +330,8 @@ Jellystack TV 构建要求：
 ```
 
 当前机器已安装 Android platform 36、build-tools 36 和 JDK 21。
-Video Pro 新仓库还没有进行第一次 Gradle 构建，也没有 TV 截图证据。
+Video Pro 新仓库已完成 `:app-tv:assembleDebug`，并在真实 Android TV
+设备上完成 1080p UI 验证。
 
 如 Gradle 找不到 SDK，可临时设置：
 
@@ -377,3 +379,19 @@ $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 - Video Pro 是否需要额外手机端；当前只规划 TV。
 - 追剧周表是否进入 V1，当前计划保留。
 - 官方接口后续变化时，是否继续动态解析网页签名密钥，还是改走授权 API。
+
+## 16. 2026-10-31 本次续作结果
+
+- 新包身份：`com.dongpiandi.videopro`，Video Pro `0.1.0`。
+- 品牌资源：按用户提供的红色电影播放标更新启动图标、自适应/圆形图标、
+  TV banner 和登录页品牌标识。
+- 新启动入口：`VideoProTvRoot`，不再显示 Jellyfin 服务器、Quick Connect、
+  Profile、Seerr、SyncPlay、Diagnostics 或自动 Trailer 预览入口。
+- 新数据模块：`dongpian-data`，统一动态签名、Cookie 会话、SecureStore、
+  请求头、401 密钥刷新、响应大小限制和官方接口 DTO 映射。
+- 线上无账号 GET 验证：`feed/home`、`browse/catalog`、搜索、详情、选集、
+  `playback/resolve` 和片单均返回 HTTP 200。
+- 真机验证：使用用户提供的测试账号完成真实登录；首页、片库、搜索、片单、
+  我的、详情、选集和冷启动会话恢复均正常。凭据未写入仓库或日志。
+- 当前明确未完成：播放器接入、历史/收藏 UI、45 秒进度同步、换线播放、
+  720p/1080p 截图矩阵、双向续播和 30 分钟稳定性测试。

@@ -39,6 +39,20 @@ class OfficialTotalRankingTest {
         assertTrue(paths.all { "kind=short_drama" in it })
     }
 
+    @Test fun animeSectionsUseOfficialCatalogueAndKeepEachSectionIndependent() = runTest {
+        val paths = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val source = DongpianOfficialVodSource(RuntimeEnvironment.getApplication()) { _, path, _, _ ->
+            paths += path
+            response(listOf("a"), false, 1)
+        }
+        val sections = source.animeRecommendationSections()
+        assertEquals(listOf("最近热门", "最近更新", "豆瓣高分"), sections.map { it.title })
+        assertEquals(3, paths.size)
+        assertTrue(paths.all { "kind=anime" in it })
+        assertTrue(paths.any { "intent=latest_catalog" in it })
+        assertTrue(paths.any { "sort=rating" in it })
+    }
+
     @Test fun usesTotalWindowAndFollowsHasMoreInsteadOfReportedTotal() = runTest {
         val paths = mutableListOf<String>()
         val source = DongpianOfficialVodSource(RuntimeEnvironment.getApplication()) { _, path, _, _ ->

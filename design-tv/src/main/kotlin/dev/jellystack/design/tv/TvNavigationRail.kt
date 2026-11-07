@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
@@ -51,7 +50,6 @@ internal fun TvNavigationRail(
     selected: TvRoute,
     expanded: Boolean,
     strings: TvStrings,
-    profileName: String,
     callbacks: TvNavigationRailCallbacks,
 ) {
     val entries =
@@ -64,7 +62,7 @@ internal fun TvNavigationRail(
         )
     TvRouteFocusMaterializer(
         ownerId = "navigation-rail",
-        targetIds = entries.map { tvRailTargetId(it.route) }.toSet() + TV_PROFILE_AVATAR_TARGET,
+        targetIds = entries.map { tvRailTargetId(it.route) }.toSet(),
         fallbackTargetIds = setOf(tvRailTargetId(TvRoute.Home)),
     ) { true }
     val motionMs = if (LocalTvFocusAppearance.current.reducedMotion) 0 else TV_RAIL_SLIDE_MS
@@ -74,12 +72,6 @@ internal fun TvNavigationRail(
         exit = slideOutHorizontally(tween(motionMs)) { -it } + fadeOut(tween(motionMs)),
     ) {
         TvNavigationRailPanel {
-            TvNavigationRailProfile(
-                label = "${strings.profiles}: $profileName",
-                profileName = profileName,
-                expanded = expanded,
-                onProfile = callbacks.onProfile,
-            )
             entries.forEach { entry ->
                 TvNavigationRailItem(entry, isSelected = selected.sameTopLevel(entry.route), expanded, callbacks)
             }
@@ -88,7 +80,6 @@ internal fun TvNavigationRail(
 }
 
 internal class TvNavigationRailCallbacks(
-    val onProfile: () -> Unit,
     val onSelected: (TvRoute) -> Unit,
     val onDismiss: () -> Unit,
 )
@@ -133,32 +124,6 @@ private fun TvNavigationRailPanel(content: @Composable () -> Unit) {
         ) {
             content()
         }
-    }
-}
-
-@Composable
-private fun TvNavigationRailProfile(
-    label: String,
-    profileName: String,
-    expanded: Boolean,
-    onProfile: () -> Unit,
-) {
-    Row(
-        Modifier
-            .width(TV_RAIL_ITEM_WIDTH)
-            .semantics(mergeDescendants = true) { contentDescription = label }
-            .tvFocusable(
-                onClick = onProfile,
-                enabled = tvNavigationRailItemsFocusable(expanded),
-                shape = TV_RAIL_ITEM_SHAPE,
-                focusTargetId = TV_PROFILE_AVATAR_TARGET.takeIf { expanded },
-                fill = Color.Transparent,
-            ).padding(horizontal = 14.dp, vertical = 15.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Icon(Icons.Default.AccountCircle, null, tint = TvPurple)
-        Text(profileName, color = TvText, fontSize = 18.sp, maxLines = 1)
     }
 }
 

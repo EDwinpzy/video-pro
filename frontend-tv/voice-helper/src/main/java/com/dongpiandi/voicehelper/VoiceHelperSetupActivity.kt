@@ -112,8 +112,8 @@ class VoiceHelperSetupActivity : Activity() {
         column.addView(
             text(
                 value =
-                    "输入框内只做原厂语音听写；没有输入框时使用原厂语音窗口识别，" +
-                        "再由自定义大模型回答。",
+                    "输入框内只做原厂语音听写；没有输入框时显示自有语音助手界面，" +
+                        "识别继续使用原厂 AIUI，回答使用自定义大模型并由原厂 TTS 播报。",
                 size = 21f,
                 color = Color.argb(185, 255, 255, 255),
             ).apply {
@@ -174,7 +174,8 @@ class VoiceHelperSetupActivity : Activity() {
             text(
                 value =
                     "模型顺序固定为 group/free → auto/deepseek-v4.1-flash；" +
-                        "首个模型失败会自动切换。密钥不会写入安装包或日志。",
+                        "首个模型失败会自动切换。请求使用 Responses API 并启用 " +
+                        "单次 web_search，密钥不会写入安装包或日志。",
                 size = 16f,
                 color = Color.argb(135, 255, 255, 255),
             ).apply {
@@ -222,7 +223,8 @@ class VoiceHelperSetupActivity : Activity() {
         column.addView(
             text(
                 value =
-                    "设备要求：坚果 S621 / Android 13，安装包必须以 32 位 armeabi-v7a 运行。",
+                    "设备要求：坚果 S621 / Android 13，安装包必须以 32 位 armeabi-v7a 运行。" +
+                        "原厂语音包只作为识别和 TTS 引擎保留，原厂助手窗口不会显示。",
                 size = 15f,
                 color = Color.argb(110, 255, 255, 255),
             ).apply {
@@ -270,6 +272,12 @@ class VoiceHelperSetupActivity : Activity() {
         when (VoiceHelperAccess.requestEnable(this)) {
             VoiceHelperAccess.EnableRequest.ALREADY_ENABLED ->
                 Toast.makeText(this, "全局语音助手已开启", Toast.LENGTH_SHORT).show()
+            VoiceHelperAccess.EnableRequest.CONFLICT_REMAINS ->
+                Toast.makeText(
+                    this,
+                    "无法关闭 Video Pro 的旧听写服务，请先在无障碍设置中关闭它",
+                    Toast.LENGTH_LONG,
+                ).show()
             VoiceHelperAccess.EnableRequest.VENDOR_REQUESTED ->
                 Toast.makeText(this, "已请求系统开启，请稍候检查状态", Toast.LENGTH_SHORT).show()
             VoiceHelperAccess.EnableRequest.SETTINGS_OPENED -> Unit
@@ -297,15 +305,15 @@ class VoiceHelperSetupActivity : Activity() {
                 append('\n')
                 append(statusLine("无障碍服务", serviceEnabled))
                 append('\n')
-                append(statusLine("原厂 AIUI", vendorReady))
+                append(statusLine("原厂识别与 TTS", vendorReady))
                 append('\n')
                 append(statusLine("大模型配置", configured))
             }
         conflictView.text =
-            if (VoiceHelperAccess.conflictingDictationEnabled(this)) {
-                "检测到 Video Pro 的听写服务也处于开启状态。两个服务不要同时启用，否则会重复消费语音键。"
-            } else {
-                ""
+            when {
+                VoiceHelperAccess.conflictingDictationEnabled(this) ->
+                    "检测到 Video Pro 的听写服务也处于开启状态。两个服务不要同时启用，否则会重复消费语音键。"
+                else -> ""
             }
     }
 

@@ -24,24 +24,38 @@ class ChatEndpointPolicyTest {
     }
 
     @Test
-    fun buildsChatEndpointFromRootCustomAndVersionedBases() {
+    fun buildsResponsesEndpointFromRootCustomAndVersionedBases() {
         assertEquals(
-            "https://example.com/v1/chat/completions",
-            ChatEndpointPolicy.chatCompletionsUrl("https://example.com/"),
+            "https://example.com/v1/responses",
+            ChatEndpointPolicy.responsesUrl("https://example.com/"),
         )
         assertEquals(
-            "https://example.com/openai/v1/chat/completions",
-            ChatEndpointPolicy.chatCompletionsUrl("https://example.com/openai"),
+            "https://example.com/openai/v1/responses",
+            ChatEndpointPolicy.responsesUrl("https://example.com/openai"),
         )
         assertEquals(
-            "https://example.com/openai/v1/chat/completions",
-            ChatEndpointPolicy.chatCompletionsUrl("https://example.com/openai/v1/"),
+            "https://example.com/openai/v1/responses",
+            ChatEndpointPolicy.responsesUrl("https://example.com/openai/v1/"),
         )
         assertEquals(
-            "https://example.com/openai/v1/chat/completions",
-            ChatEndpointPolicy.chatCompletionsUrl(
+            "https://example.com/openai/v1/responses",
+            ChatEndpointPolicy.responsesUrl(
+                "https://example.com/openai/v1/responses/",
+            ),
+        )
+        assertEquals(
+            "https://example.com/openai/v1/responses",
+            ChatEndpointPolicy.responsesUrl(
                 "https://example.com/openai/v1/chat/completions/",
             ),
+        )
+    }
+
+    @Test
+    fun keepsLegacyChatEndpointBuilderCompatible() {
+        assertEquals(
+            "https://example.com/openai/v1/chat/completions",
+            ChatEndpointPolicy.chatCompletionsUrl("https://example.com/openai/v1/responses"),
         )
     }
 

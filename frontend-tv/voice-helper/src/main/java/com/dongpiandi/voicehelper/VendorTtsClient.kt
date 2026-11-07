@@ -31,6 +31,12 @@ internal class VendorTtsClient(
         send(ACTION_TTS_CANCEL)
     }
 
+    fun dismissFactoryUiOnly() {
+        if (!isVendorInstalled()) return
+        send(ACTION_DISMISS_DIALOG)
+        send(ACTION_HIDE_BLACK_BG)
+    }
+
     private fun send(
         action: String,
         extra: String? = null,

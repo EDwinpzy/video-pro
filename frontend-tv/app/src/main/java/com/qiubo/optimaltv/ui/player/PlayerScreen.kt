@@ -141,9 +141,6 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
         },
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
-    val mediaCategoryId = remember(vodId, ui.title, ui.sourceResolving) {
-        Graph.repo.itemById(vodId)?.categoryId.orEmpty()
-    }
     val shortDramaEpisodeKeys = remember(vodId) { ShortDramaEpisodeKeyHandler() }
 
     // KEEP_SCREEN_ON：投影仪防息屏
@@ -230,14 +227,13 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
                 val native = event.nativeKeyEvent
                 vm.onRemoteDirectionKey(native)
                 val episodeKey = shortDramaEpisodeKeys.handle(
-                    categoryId = mediaCategoryId,
+                    categoryId = ui.categoryId,
                     keyCode = native.keyCode,
                     action = native.action,
                     repeatCount = native.repeatCount,
                     downTimeMs = native.downTime,
                     currentEpisode = ui.epIndex,
                     episodeCount = ui.epCount,
-                    controlsVisible = ui.controlsVisible,
                     panelOpen = ui.panel != Panel.NONE,
                     dialogOpen = ui.showExitDialog,
                     isLive = ui.isLive,
