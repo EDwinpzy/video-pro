@@ -41,7 +41,7 @@ private val Wine = Color(0xFF42000A)
  * The scene is authored against the original 1280x720 artwork. The wine field
  * fills the current display while the icon and wordmark retain their aspect
  * ratio. The 1.9-second motion starts on a fully black frame and finishes in
- * 1.5 seconds, then holds the completed wine field while the
+ * 2 seconds, then holds the completed wine field while the
  * destination becomes ready.
  */
 @Composable
@@ -243,7 +243,7 @@ internal object VideoProWidescreenTimeline {
     const val closedHeight = 0f
     const val fullHeight = virtualHeight
 
-    const val wallMotionDurationMillis = 1_500L
+    const val wallMotionDurationMillis = 2_000L
 
     val previewLoopDurationMillis: Long
         get() = (previewLoopSeconds / logicalMotionEndSeconds * wallMotionDurationMillis).toLong()
