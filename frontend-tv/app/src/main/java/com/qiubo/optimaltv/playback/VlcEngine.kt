@@ -1,7 +1,8 @@
 package com.qiubo.optimaltv.playback
 
 import android.content.Context
-import android.view.TextureView
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
 import com.qiubo.optimaltv.OtvLog
 import java.util.concurrent.Executors
@@ -111,6 +112,8 @@ class VlcEngine(context: Context) : MediaEngine {
     /** Player generation is updated in the same VLC op that swaps media. */
     @Volatile private var playerGeneration = 0
     @Volatile private var ticker: Job? = null
+    @Volatile private var surfaceReady = false
+    @Volatile private var pendingPlayerForSurface: MediaPlayer? = null
     /** vout 只允许 attach 一次（2026-08-30 实测教训：直播结束追边重开时重复 attachViews
      *  抛 IllegalStateException「Can't set view when already attached」→ 重开失败卡 BUFFERING） */
     private var voutAttached = false
@@ -145,11 +148,32 @@ class VlcEngine(context: Context) : MediaEngine {
             }
         }
 
-    override val renderView: View = object : TextureView(appCtx) {
+    /**
+     * Vendors such as the S621 can leave a TextureView video black on the physical output while
+     * screencap still sees composited frames. A SurfaceView gets its own compositor layer, so the
+     * picture no longer depends on the Compose window submitting another GPU frame.
+     */
+    private val videoSurface = object : SurfaceView(appCtx), SurfaceHolder.Callback {
         init {
             // 渲染层不参与焦点（遥控焦点全部留给 Compose 控制层，与 Media3 引擎一致）
             isFocusable = false
             isFocusableInTouchMode = false
+            holder.addCallback(this)
+            setZOrderMediaOverlay(false)
+            setZOrderOnTop(false)
+        }
+
+        override fun surfaceCreated(holder: SurfaceHolder) {
+            surfaceReady = true
+            tryAttachPendingVout()
+        }
+
+        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            activeVout?.let { updateVoutWindowSize(it, width, height) }
+        }
+
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            surfaceReady = false
         }
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -158,8 +182,36 @@ class VlcEngine(context: Context) : MediaEngine {
         }
     }
 
+    override val renderView: View = videoSurface
+
+    private fun tryAttachPendingVout() {
+        if (!surfaceReady) return
+        val pending = pendingPlayerForSurface ?: return
+        enqueueVlcOp {
+            if (!surfaceReady || voutAttached || player !== pending) {
+                pendingPlayerForSurface = null
+                return@enqueueVlcOp
+            }
+            val vout = activeVout
+            if (vout == null) {
+                pendingPlayerForSurface = null
+                return@enqueueVlcOp
+            }
+            try {
+                clearVoutWindowSize(vout)
+                vout.attachViews()
+                voutAttached = true
+                pendingPlayerForSurface = null
+                updateVoutWindowSize(vout, videoSurface.width, videoSurface.height)
+                OtvLog.i("vlc surface attached")
+            } catch (failure: Throwable) {
+                OtvLog.e("vlc surface attach failed: ${failure.message}")
+            }
+        }
+    }
+
     /** VLC needs the actual surface dimensions in physical pixels; it does not infer them from
-     * TextureView layout params. The initial surface callback and every later relayout both call
+     * the render view's layout params. The initial surface callback and every later relayout both call
      * this, covering attach-before-measure, density changes, and display-size changes. */
     private fun updateVoutWindowSize(vout: IVLCVout, widthPx: Int, heightPx: Int) {
         val size = VlcRenderSize.fromViewSize(widthPx, heightPx) ?: return
@@ -215,6 +267,7 @@ class VlcEngine(context: Context) : MediaEngine {
                 activeVout = null
                 surfaceCallback = null
                 voutAttached = false
+                pendingPlayerForSurface = null
                 clearVoutWindowSize()
                 val oldPlayer = player
                 player = null
@@ -421,12 +474,11 @@ class VlcEngine(context: Context) : MediaEngine {
         val vout = p.getVLCVout()
         activeVout = vout
         clearVoutWindowSize()
-        vout.setVideoView(renderView as TextureView)
+        vout.setVideoView(videoSurface)
         val callback = object : IVLCVout.Callback {
             override fun onSurfacesCreated(vout: IVLCVout) {
                 if (released.get()) return
-                val view = renderView
-                updateVoutWindowSize(vout, view.width, view.height)
+                updateVoutWindowSize(vout, videoSurface.width, videoSurface.height)
             }
 
             override fun onSurfacesDestroyed(vout: IVLCVout) {
@@ -438,10 +490,19 @@ class VlcEngine(context: Context) : MediaEngine {
         }
         surfaceCallback = callback
         vout.addCallback(callback)
-        vout.attachViews()
-        voutAttached = true
-        val view = renderView
-        updateVoutWindowSize(vout, view.width, view.height)
+        if (surfaceReady) {
+            try {
+                clearVoutWindowSize(vout)
+                vout.attachViews()
+                voutAttached = true
+                updateVoutWindowSize(vout, videoSurface.width, videoSurface.height)
+            } catch (failure: Throwable) {
+                pendingPlayerForSurface = p
+                OtvLog.w("vlc surface not ready yet: ${failure.message}")
+            }
+        } else {
+            pendingPlayerForSurface = p
+        }
     }
 
     private fun startTicker() {
@@ -675,6 +736,7 @@ class VlcEngine(context: Context) : MediaEngine {
                     surfaceCallback = null
                     activeVout = null
                     voutAttached = false
+                    pendingPlayerForSurface = null
                     clearVoutWindowSize()
 
                     val oldPlayer = player

@@ -106,7 +106,9 @@ internal fun DanmakuOverlay(
     opacity: Float,
     scrollSpeed: Float,
     modifier: Modifier = Modifier,
-    surfaceRenderingEnabled: Boolean = true,
+    // The video now owns a SurfaceView layer. Keep danmaku in the Compose window so the
+    // S621 compositor never has to juggle two hardware surfaces during playback.
+    surfaceRenderingEnabled: Boolean = false,
 ) {
     if (items.isEmpty()) return
     if (surfaceRenderingEnabled && !LocalInspectionMode.current) {
