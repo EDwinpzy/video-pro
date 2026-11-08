@@ -52,6 +52,8 @@ data class EngineUiState(
     val firstFrameRendered: Boolean = false,
     /** 播放列表自动进入下一条媒体时递增，供上层同步集数与业务状态。 */
     val mediaSequence: Int = 0,
+    /** 最近一次无缝媒体切换方向：1=下一集，-1=上一集，0=尚未切换。 */
+    val mediaSequenceDirection: Int = 0,
 )
 
 class PrepareRequest(
@@ -99,6 +101,12 @@ interface MediaEngine {
     /** 提前进入已预加载的下一条媒体；无队列时返回 false。 */
     fun skipToQueuedNextEpisode(): Boolean = false
     fun clearQueuedNextEpisode() {}
+    /** 将上一条媒体插入当前播放列表，由播放器提前缓冲。返回 false = 当前引擎不支持。 */
+    fun enqueuePreviousEpisode(request: PrepareRequest): Boolean = false
+    fun hasQueuedPreviousEpisode(): Boolean = false
+    /** 提前进入已预加载的上一条媒体；无队列时返回 false。 */
+    fun skipToQueuedPreviousEpisode(): Boolean = false
+    fun clearQueuedPreviousEpisode() {}
     /** 直播热切换（不重建播放器/不换渲染面）：换源后直接跳默认位置（直播=边缘）。
      *  autoplay=false：暂停中的静默续签换源（保持暂停，尊重用户操作）。 */
     fun swapSource(
@@ -205,7 +213,9 @@ class Media3Engine(context: Context) : MediaEngine {
     private var activeAnalyticsListener: androidx.media3.exoplayer.analytics.AnalyticsListener? = null
     private var playerProfileRebuildPending = false
     private var queuedNextUrl: String? = null
-    private var queuedTransitionRequested = false
+    private var queuedPreviousUrl: String? = null
+    /** 1=跳下一集，-1=跳上一集，0=当前没有等待中的无缝跳转。 */
+    private var queuedTransitionDirection = 0
     private var mediaSequence = 0
 
     override fun setLargeBufferPreferred(on: Boolean) {
@@ -241,7 +251,8 @@ class Media3Engine(context: Context) : MediaEngine {
         supersedeMediaCallbacks(oldPlayer)
         player = null
         queuedNextUrl = null
-        queuedTransitionRequested = false
+        queuedPreviousUrl = null
+        queuedTransitionDirection = 0
         ticker?.cancel()
         ticker = null
         if (oldPlayer == null) return
@@ -323,6 +334,18 @@ class Media3Engine(context: Context) : MediaEngine {
         }
     }
 
+    private fun mediaUrlAt(p: ExoPlayer, index: Int): String? {
+        if (index !in 0 until p.mediaItemCount) return null
+        return p.getMediaItemAt(index).localConfiguration?.uri?.toString()
+    }
+
+    /** Keep queue markers aligned with the playlist after moving in either direction. */
+    private fun syncQueueMarkers(p: ExoPlayer) {
+        val index = p.currentMediaItemIndex
+        queuedPreviousUrl = if (index > 0) mediaUrlAt(p, index - 1) else null
+        queuedNextUrl = if (p.hasNextMediaItem()) mediaUrlAt(p, index + 1) else null
+    }
+
     private fun createPlayerListener(p: ExoPlayer, generation: Int) = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (!isCurrentMedia(p, generation)) return
@@ -346,15 +369,18 @@ class Media3Engine(context: Context) : MediaEngine {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (!isCurrentMedia(p, generation)) return
-            val accepted =
-                reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
-                    (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && queuedTransitionRequested)
-            if (!accepted || p.currentMediaItemIndex <= 0) return
-            queuedTransitionRequested = false
-            queuedNextUrl = null
+            val direction = when {
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> 1
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK &&
+                    queuedTransitionDirection != 0 -> queuedTransitionDirection
+                else -> return
+            }
+            queuedTransitionDirection = 0
+            syncQueueMarkers(p)
             mediaSequence++
             com.qiubo.optimaltv.OtvLog.i(
-                "engine 无缝进入下一集 seq=$mediaSequence index=${p.currentMediaItemIndex}",
+                "engine 无缝切换${if (direction > 0) "下一集" else "上一集"} " +
+                    "seq=$mediaSequence index=${p.currentMediaItemIndex}",
             )
             val mapped = when (p.playbackState) {
                 Player.STATE_BUFFERING -> EnginePlayState.BUFFERING
@@ -364,6 +390,7 @@ class Media3Engine(context: Context) : MediaEngine {
             }
             _ui.value = _ui.value.copy(
                 mediaSequence = mediaSequence,
+                mediaSequenceDirection = direction,
                 state = mapped,
                 positionMs = p.currentPosition,
                 durationMs = if (p.duration > 0) p.duration else 0L,
@@ -655,7 +682,8 @@ class Media3Engine(context: Context) : MediaEngine {
         if (released.get()) return
         val p = ensurePlayerForMediaChange()
         queuedNextUrl = null
-        queuedTransitionRequested = false
+        queuedPreviousUrl = null
+        queuedTransitionDirection = 0
         beginMediaSession(p)
         _ui.value = _ui.value.copy(
             state = EnginePlayState.BUFFERING,
@@ -692,7 +720,8 @@ class Media3Engine(context: Context) : MediaEngine {
         if (released.get()) return
         val p = ensurePlayerForMediaChange()
         queuedNextUrl = null
-        queuedTransitionRequested = false
+        queuedPreviousUrl = null
+        queuedTransitionDirection = 0
         beginMediaSession(p)
         com.qiubo.optimaltv.OtvLog.i("engine 热切换源（不重建播放器, autoplay=$autoplay）: ${url.take(110)}")
         _ui.value = _ui.value.copy(
@@ -725,9 +754,19 @@ class Media3Engine(context: Context) : MediaEngine {
         val p = player ?: return false
         if (p.mediaItemCount == 0) return false
         if (queuedNextUrl == request.url) return true
+        // Keep exactly one already-played item so the back direction can stay seamless too.
         val currentIndex = p.currentMediaItemIndex
-        if (currentIndex > 0) p.removeMediaItems(0, currentIndex)
+        if (currentIndex > 1) p.removeMediaItems(0, currentIndex - 1)
         val index = p.currentMediaItemIndex
+        val existingNext = index + 1
+        if (existingNext < p.mediaItemCount && mediaUrlAt(p, existingNext) == request.url) {
+            if (p.mediaItemCount > existingNext + 1) {
+                p.removeMediaItems(existingNext + 1, p.mediaItemCount)
+            }
+            queuedNextUrl = request.url
+            queuedTransitionDirection = 0
+            return true
+        }
         if (p.mediaItemCount > index + 1) p.removeMediaItems(index + 1, p.mediaItemCount)
         val source =
             mediaSourceFactory(request).createMediaSource(
@@ -735,9 +774,36 @@ class Media3Engine(context: Context) : MediaEngine {
             )
         p.addMediaSource(source)
         queuedNextUrl = request.url
-        queuedTransitionRequested = false
+        queuedTransitionDirection = 0
         com.qiubo.optimaltv.OtvLog.i(
             "engine 已排队下一集并预缓冲 index=${p.mediaItemCount - 1}",
+        )
+        return true
+    }
+
+    override fun enqueuePreviousEpisode(request: PrepareRequest): Boolean {
+        if (released.get()) return false
+        val p = player ?: return false
+        if (p.mediaItemCount == 0) return false
+        if (queuedPreviousUrl == request.url) return true
+        val currentIndex = p.currentMediaItemIndex
+        if (currentIndex > 0 && mediaUrlAt(p, currentIndex - 1) == request.url) {
+            if (currentIndex > 1) p.removeMediaItems(0, currentIndex - 1)
+            queuedPreviousUrl = request.url
+            queuedTransitionDirection = 0
+            return true
+        }
+        // Replace any stale previous entry, then insert the fresh one immediately before current.
+        if (currentIndex > 0) p.removeMediaItems(0, currentIndex)
+        val source =
+            mediaSourceFactory(request).createMediaSource(
+                mediaItemFor(request.url, request.mimeType),
+            )
+        p.addMediaSource(0, source)
+        queuedPreviousUrl = request.url
+        queuedTransitionDirection = 0
+        com.qiubo.optimaltv.OtvLog.i(
+            "engine 已排队上一集并预缓冲 index=${(p.currentMediaItemIndex - 1).coerceAtLeast(0)}",
         )
         return true
     }
@@ -745,12 +811,25 @@ class Media3Engine(context: Context) : MediaEngine {
     override fun hasQueuedNextEpisode(): Boolean =
         queuedNextUrl != null && player?.hasNextMediaItem() == true
 
+    override fun hasQueuedPreviousEpisode(): Boolean =
+        queuedPreviousUrl != null && player?.hasPreviousMediaItem() == true
+
     override fun skipToQueuedNextEpisode(): Boolean {
         if (released.get()) return false
         val p = player ?: return false
         if (!hasQueuedNextEpisode()) return false
-        queuedTransitionRequested = true
+        queuedTransitionDirection = 1
         p.seekToNextMediaItem()
+        p.play()
+        return true
+    }
+
+    override fun skipToQueuedPreviousEpisode(): Boolean {
+        if (released.get()) return false
+        val p = player ?: return false
+        if (!hasQueuedPreviousEpisode()) return false
+        queuedTransitionDirection = -1
+        p.seekToPreviousMediaItem()
         p.play()
         return true
     }
@@ -758,11 +837,19 @@ class Media3Engine(context: Context) : MediaEngine {
     override fun clearQueuedNextEpisode() {
         val p = player ?: return
         queuedNextUrl = null
-        queuedTransitionRequested = false
+        queuedTransitionDirection = 0
         val index = p.currentMediaItemIndex
         if (p.mediaItemCount > index + 1) {
             p.removeMediaItems(index + 1, p.mediaItemCount)
         }
+    }
+
+    override fun clearQueuedPreviousEpisode() {
+        val p = player ?: return
+        queuedPreviousUrl = null
+        queuedTransitionDirection = 0
+        val index = p.currentMediaItemIndex
+        if (index > 0) p.removeMediaItems(0, index)
     }
 
     override fun seekToLiveEdge() {
