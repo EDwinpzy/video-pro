@@ -2173,6 +2173,35 @@ class VodRepository(
         "$base/api/relay?u=" + java.net.URLEncoder.encode(raw, "UTF-8") + "&ref=none"
 
     /**
+     * Keep the user's selected official line and only change its transport.
+     * The local relay rewrites the HLS manifest and prefetches subsequent
+     * segments over several connections; it never selects a sibling source.
+     */
+    private suspend fun officialPlayback(
+        base: String,
+        url: String,
+        headers: Map<String, String>,
+        userAgent: String,
+        mimeType: String,
+        preferRelay: Boolean,
+    ): com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl {
+        if (PlaybackRelayPolicy.shouldRelayOfficialUrl(url, preferRelay) &&
+            waitBackendReady(base, tries = 8)
+        ) {
+            return com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl(
+                url = relayWrap(base, url),
+                mimeType = mimeType,
+            )
+        }
+        return com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl(
+            url = url,
+            headers = headers,
+            userAgent = userAgent,
+            mimeType = mimeType,
+        )
+    }
+
+    /**
      * 解析线路直链（v1.14 起默认经本地中继多连接并行拉片）：
      * ExoPlayer 的 HLS 是单加载线程顺序拉分片，免费 CDN 单连接供需比实测仅 0.86
      * （155KB/s 供给 vs ~180KB/s 码率）——90s 缓冲以 ~14%/实时 速率放空，
@@ -2194,11 +2223,13 @@ class VodRepository(
                     forceRefresh = forceRefresh,
                 )
             ) {
-                return@withContext com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl(
+                return@withContext officialPlayback(
+                    base = base,
                     url = officialLine.url,
                     headers = officialLine.headers,
                     userAgent = officialLine.userAgent,
                     mimeType = officialLine.mimeType,
+                    preferRelay = preferRelay,
                 )
             }
             if (!DongpianPlaybackProtocol.isParseLine(officialLine)) {
@@ -2208,11 +2239,13 @@ class VodRepository(
                 )
             }
             val resolved = official.resolveLine(binding, forceRefresh)
-            return@withContext com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl(
+            return@withContext officialPlayback(
+                base = base,
                 url = resolved.url,
                 headers = resolved.headers,
                 userAgent = resolved.userAgent,
                 mimeType = resolved.mimeType,
+                preferRelay = preferRelay,
             )
         }
         if (line.playRef.isBlank()) {

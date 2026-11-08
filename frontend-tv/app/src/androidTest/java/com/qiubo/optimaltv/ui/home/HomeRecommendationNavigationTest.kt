@@ -294,6 +294,8 @@ class HomeRecommendationNavigationTest {
             .getInstrumentation()
             .sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
         rule.waitUntil(5_000) { sectionMoves.get() == 1 }
+        val focusedBeforeRight =
+            rule.onAllNodes(isFocused()).fetchSemanticsNodes().single().boundsInRoot
         androidx.test.platform.app.InstrumentationRegistry
             .getInstrumentation()
             .sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -304,6 +306,10 @@ class HomeRecommendationNavigationTest {
         val focusedBounds =
             rule.onAllNodes(isFocused()).fetchSemanticsNodes().single().boundsInRoot
         assertEquals(1, sectionMoves.get())
+        assertTrue(
+            "RIGHT should advance the focused card: before=$focusedBeforeRight after=$focusedBounds",
+            focusedBounds.center.x > focusedBeforeRight.center.x + 1f,
+        )
         assertTrue(listState.get().firstVisibleItemIndex > 0)
         assertTrue(
             "focus should stay inside the second section: focused=$focusedBounds " +

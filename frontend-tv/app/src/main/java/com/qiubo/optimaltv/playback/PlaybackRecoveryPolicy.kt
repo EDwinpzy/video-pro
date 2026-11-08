@@ -5,7 +5,6 @@ enum class PlaybackKind { LIVE, VOD }
 enum class RecoveryAction {
     RELOAD_CURRENT,
     REFRESH_CURRENT,
-    SWITCH_SOURCE,
     RECREATE_ENGINE,
     RESET_RUNTIME,
     GIVE_UP,
@@ -21,26 +20,21 @@ object PlaybackRecoveryPolicy {
     fun action(kind: PlaybackKind, attempt: Int): RecoveryAction = when (kind) {
         PlaybackKind.LIVE -> when (attempt) {
             0 -> RecoveryAction.REFRESH_CURRENT
-            1 -> RecoveryAction.SWITCH_SOURCE
-            2 -> RecoveryAction.RECREATE_ENGINE
-            3 -> RecoveryAction.RESET_RUNTIME
+            1 -> RecoveryAction.RECREATE_ENGINE
+            2 -> RecoveryAction.RESET_RUNTIME
             else -> RecoveryAction.GIVE_UP
         }
         PlaybackKind.VOD -> when (attempt) {
             0 -> RecoveryAction.RELOAD_CURRENT
             1 -> RecoveryAction.REFRESH_CURRENT
-            2 -> RecoveryAction.SWITCH_SOURCE
-            3 -> RecoveryAction.RECREATE_ENGINE
+            2 -> RecoveryAction.RECREATE_ENGINE
             else -> RecoveryAction.GIVE_UP
         }
     }
 
-    /** A live source gets one fresh same-source retry before we move on. */
-    fun liveLineFailureAction(retryCount: Int, hasAlternate: Boolean): RecoveryAction = when {
-        retryCount <= 0 -> RecoveryAction.REFRESH_CURRENT
-        hasAlternate -> RecoveryAction.SWITCH_SOURCE
-        else -> RecoveryAction.GIVE_UP
-    }
+    /** A live source gets one fresh same-source retry, then stops; it is never exchanged. */
+    fun liveLineFailureAction(retryCount: Int): RecoveryAction =
+        if (retryCount <= 0) RecoveryAction.REFRESH_CURRENT else RecoveryAction.GIVE_UP
 
     fun resumePosition(positionMs: Long): Long = (positionMs - RESUME_REWIND_MS).coerceAtLeast(0L)
 

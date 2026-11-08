@@ -68,7 +68,6 @@ import coil.compose.AsyncImage
 import com.qiubo.optimaltv.Graph
 import com.qiubo.optimaltv.OtvLog
 import com.qiubo.optimaltv.data.repo.IptvRepository
-import com.qiubo.optimaltv.data.repo.LineSpeed
 import com.qiubo.optimaltv.playback.EnginePlayState
 import com.qiubo.optimaltv.ui.components.AppleLoading
 import com.qiubo.optimaltv.ui.components.FocusRegistry
@@ -154,11 +153,6 @@ fun TvScreen(nav: NavController) {
     var playingGroup by remember { mutableStateOf("") }
     var playingName by remember { mutableStateOf("") }
     var playingUrl by remember { mutableStateOf("") }
-    val playingKey = playingName + "|" + playingUrl
-    /** 电视#5：当前线路测速分数与自动切换守卫（每频道一次） */
-    var playingLineScore by remember { mutableStateOf<Long?>(null) }
-    var autoSwapped by remember { mutableStateOf(false) }
-
     /* ---------- 双态：浏览（进入默认）/ 播放 ---------- */
     var playing by remember { mutableStateOf(false) }
 
@@ -201,25 +195,20 @@ fun TvScreen(nav: NavController) {
         focusTick++
     }
 
-    /** [lineIdx] = 起播线路（0=主线路；恢复上次线路时 >0）；其余线路作为备用线传给 VM。
-     *  电视#5 实时测速：主线路失败时按测速分数取最快（iptv.rankUrls，失败线殿后），
-     *  起播后异步补测全部线路（下次换台/自动切换即有分数可用）。
+    /** [lineIdx] = 用户选择的起播线路（0=主线路；恢复上次线路时 >0）。
+     *  这里不按测速结果改选线路；起播后异步补测只用于展示，是否换线由用户决定。
      *  v1.20：浏览态选中频道 → playing=true 进入直播画面（电视#1）。 */
     fun startPlay(group: String, ch: IptvRepository.Channel, keepSidebar: Boolean, lineIdx: Int = 0) {
-        val ranked = iptv.rankUrls(ch.urls)
-        val urls = if (ranked.first() == (ch.urls.getOrNull(lineIdx) ?: ch.urls.first())) ranked else ch.urls
-        val urlIdx = urls.indexOf(ch.urls.getOrNull(lineIdx) ?: ch.urls.firstOrNull()).takeIf { it >= 0 } ?: 0
-        val url = urls.getOrNull(urlIdx) ?: urls.firstOrNull() ?: return
+        val urlIdx = lineIdx.takeIf { it in ch.urls.indices } ?: 0
+        val url = ch.urls.getOrNull(urlIdx) ?: return
         playingGroup = group
         playingName = ch.name
         playingUrl = url
-        playingLineScore = LineSpeed.scoreOf(url)
-        autoSwapped = false
         playing = true
         hint = ch.name   // 换台反馈：底部轻提示频道名
         scope.launch { runCatching { Graph.settings.rememberIptvLast(group, ch.name, url) } }
         scope.launch { iptv.probeAll(ch.urls) }   // 电视#5：后台补测本频道全部线路
-        vm.switchIptv(ch.name, url, urls.filterIndexed { i, _ -> i != urlIdx })
+        vm.switchIptv(ch.name, url)
         if (keepSidebar) locatePlayingInSidebar() else sidebarVisible = false
     }
 
@@ -243,29 +232,6 @@ fun TvScreen(nav: NavController) {
             focusTick++
         }
         sidebarVisible = true
-    }
-
-    /* ---------- 电视#5：起播慢时自动切最快线路 ----------
-     * 起播 3.5s 仍 BUFFERING，且已测出明显更快的线路（分数 < 当前线 55%）→ 无感
-     * 热切换（引擎复用不重建渲染面）。每频道只自动切一次，防止抖动循环。 */
-    LaunchedEffect(playingKey, vmUi.playState) {
-        if (autoSwapped || vmUi.playState != EnginePlayState.BUFFERING || vmUi.fatalMsg != null) return@LaunchedEffect
-        kotlinx.coroutines.delay(3_500)
-        if (autoSwapped || vm.ui.value.playState != EnginePlayState.BUFFERING ||
-            vm.ui.value.fatalMsg != null || vm.ui.value.isPlaying
-        ) return@LaunchedEffect
-        val ch = ui.channels.firstOrNull { it.name == playingName && it.group == playingGroup } ?: return@LaunchedEffect
-        val cur = playingLineScore
-        val best = iptv.rankUrls(ch.urls).firstOrNull { it != playingUrl && LineSpeed.scoreOf(it)?.let { sc -> sc < LineSpeed.FAIL_MS } == true }
-        val bestScore = best?.let { LineSpeed.scoreOf(it) }
-        if (best != null && bestScore != null && bestScore < LineSpeed.FAIL_MS &&
-            (cur == null || bestScore < cur * 0.55f)
-        ) {
-            autoSwapped = true
-            OtvLog.i("tv 测速自动换线: ${playingName} ${cur ?: -1}ms → ${bestScore}ms")
-            hint = "已自动切换最快线路"
-            vm.switchIptv(ch.name, best, ch.urls.filter { it != playingUrl && it != best })
-        }
     }
 
     /* ---------- 电视#5：驻留期轮询测速（当前分组频道，滚动刷新分数） ---------- */
@@ -321,25 +287,6 @@ fun TvScreen(nav: NavController) {
         if (chListState.layoutInfo.totalItemsCount > 0) chListState.scrollToItem(0)
     }
 
-    /* ---------- 起播失败自动跳台：12s 未恢复 → 下一台（连续 3 次上限防循环） ---------- */
-    var autoSkips by remember { mutableIntStateOf(0) }
-    LaunchedEffect(vmUi.playState) {
-        if (vmUi.playState == EnginePlayState.READY) autoSkips = 0
-    }
-    LaunchedEffect(vmUi.fatalMsg, playingKey) {
-        if (vmUi.fatalMsg == null) return@LaunchedEffect
-        delay(12_000)
-        if (vm.ui.value.fatalMsg == null) return@LaunchedEffect   // VM 30s 自动重试已恢复
-        if (autoSkips >= 3) {
-            hint = "多个频道播放失败，请手动选台"
-            openSidebar()
-            return@LaunchedEffect
-        }
-        autoSkips++
-        hint = "该频道不可用，自动切换下一台…"
-        skipChannel(+1)
-    }
-
     /* ---------- 进页自动刷新（30min 节流）+ 驻留期每 60s 检查 ---------- */
     LaunchedEffect(Unit) {
         iptv.refreshIfStale()
@@ -391,7 +338,7 @@ fun TvScreen(nav: NavController) {
     /* ======================= 浏览态：下方两级频道菜单（电视#1） ======================= */
     if (!playing) {
         TvBrowseScreen(
-            nav = nav, iptv = iptv, ui = ui, s = s, scope = scope,
+            nav = nav, ui = ui, s = s, scope = scope,
             cardReg = cardReg,
             groupSel = groupSel, onGroupSel = { groupSel = it },
             hint = hint,
@@ -415,8 +362,8 @@ fun TvScreen(nav: NavController) {
             },
     ) {
 
-        /* ---------- 视频层：key=引擎实例代数（v1.16）。换台/备用线热切换复用同一引擎
-            实例（prepare 同 Player 换源），渲染面不重建——旧画面停帧过渡到新首帧，无黑屏；
+        /* ---------- 视频层：key=引擎实例代数（v1.16）。换台复用同一引擎实例
+            （prepare 同 Player 换源），渲染面不重建——旧画面停帧过渡到新首帧，无黑屏；
             仅引擎实例更换（VLC 回退等 epoch+1）才重建渲染节点（factory 摘旧 parent 防崩溃）---------- */
         if (vm.hasEngine()) {
             key("${vmUi.engineEpoch}") {
@@ -623,7 +570,6 @@ fun TvScreen(nav: NavController) {
 @Composable
 private fun TvBrowseScreen(
     nav: NavController,
-    iptv: IptvRepository,
     ui: IptvRepository.IptvState,
     s: Float,
     scope: kotlinx.coroutines.CoroutineScope,

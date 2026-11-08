@@ -57,6 +57,10 @@ Build from this directory:
 
 The APK is written to `build\optimal-tv\app\outputs\apk\debug\app-debug.apk`.
 
+`app/src/main/assets/backend/python-backend.zip` is a required runtime asset.
+It is intentionally tracked so a fresh checkout can produce a working TV
+build; an APK without it has no local relay or source resolver.
+
 Account discovery uses a domestic DNS-over-HTTPS lookup with the system resolver
 as a fallback. This avoids intermittent login failures caused by a router DNS
 answer that points at an unreachable rotating CDN node.

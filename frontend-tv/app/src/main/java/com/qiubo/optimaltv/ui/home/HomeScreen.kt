@@ -108,9 +108,12 @@ internal suspend fun focusHomeSection(
 ): Boolean {
     listState.animateScrollToItem(homeSectionHeaderItemIndex(targetIndex))
     withFrameNanos { }
-    repeat(16) {
+    // The S621 can spend longer than 16 display frames composing a poster strip
+    // and decoding its first card. Giving up that early left the previous row's
+    // focus scrolled off-screen, so LEFT/RIGHT looked dead in the new section.
+    repeat(90) {
         if (runCatching { firstCardFocus.requestFocus() }.isSuccess) return true
-        withFrameNanos { }
+        delay(16L)
     }
     return false
 }
@@ -359,6 +362,11 @@ private fun CategoryVodScreen(
                                 (heroIdxTop + 1) % heroesTop.size.coerceAtLeast(1),
                             )?.id.orEmpty()
                         },
+                        // Hero uses the legacy focus registry; poster cards use
+                        // native Compose focus on constrained devices. Bridge
+                        // DOWN explicitly so the first section always receives
+                        // focus even when the card is not composed yet.
+                        onDown = { moveSection(fromIndex = -1, step = 1) },
                     )
                 }
             }

@@ -18,10 +18,10 @@ import com.qiubo.optimaltv.data.analytics.PlaybackTelemetry
  *
  * 处置阶梯（缓冲中累计卡顿时长）：
  *  - 0–3.5s    HEALTHY        正常缓冲，不干预；
- *  - 3.5–6s    PREP_BACKUP    有备用线时后台预备（还不打断）；无备用线继续观察；
- *  - 6–20s     SWITCH         交给有界恢复阶梯处理网络/未知停滞；
+ *  - 3.5–25s   PREP_BACKUP    继续观察；慢源补片常需十几秒，提前重启只会清空缓冲；
+ *  - 25–45s    SWITCH         交给有界恢复阶梯处理网络/未知停滞；
  *  - DECODE    DEGRADE_ENGINE 仅有明确解码证据时降级引擎；
- *  - >=20s     GIVE_UP        长时间卡死，触发失败链。
+ *  - >=45s     GIVE_UP        长时间卡死，触发失败链。
  *
  * **20–30s 切线冷却**：一次恢复动作后，同一条线在冷却窗口内不再被自动切换选中——
  * 刚切过去的线很可能也是慢的（同一区域 CDN、同一运营商），无冷却会「线1→线2→线1」
@@ -30,9 +30,9 @@ import com.qiubo.optimaltv.data.analytics.PlaybackTelemetry
 object LongPlaybackHealthPolicy {
 
     const val PREP_BACKUP_MS = 3_500L
-    const val SWITCH_MS = 6_000L
+    const val SWITCH_MS = 25_000L
     const val DEGRADE_ENGINE_MS = 12_000L
-    const val HARD_TIMEOUT_MS = 20_000L
+    const val HARD_TIMEOUT_MS = 45_000L
 
     /** 切线冷却下限/上限：20–30s。 */
     const val SWITCH_COOLDOWN_MIN_MS = 20_000L

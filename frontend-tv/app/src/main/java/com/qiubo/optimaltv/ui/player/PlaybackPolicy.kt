@@ -4,12 +4,6 @@ import com.qiubo.optimaltv.data.model.LineInfo
 
 object PlaybackPolicy { const val SEEK_STEP_MS = 10_000L }
 
-/** A failed startup visits each source once; only an explicit retry starts a new round. */
-object VodSourceAttemptPolicy {
-    fun next(lineCount: Int, activeLine: Int, tried: Set<Int>, allowed: (Int) -> Boolean): Int? =
-        (0 until lineCount).firstOrNull { it != activeLine && it !in tried && allowed(it) }
-}
-
 /** Remembers a VOD source by a stable provider line id instead of its mutable display index. */
 object VodSourceSelectionPolicy {
     fun identity(line: LineInfo?): String? {
@@ -70,24 +64,6 @@ object VodSourceSelectionPolicy {
             availableIndices.firstOrNull { providerGroupKey(lines[it]) == provider }?.let { return it }
         }
         return availableIndices.first()
-    }
-
-    /** After a selected official line fails, retry the same provider before changing providers. */
-    fun selectFallbackIndex(
-        lines: List<LineInfo>,
-        currentIndex: Int,
-        triedIndices: Set<Int>,
-        preferredProviderGroupKey: String? = null,
-        available: (LineInfo) -> Boolean = ::isAvailable,
-    ): Int? {
-        val candidates = lines.indices.filter {
-            it != currentIndex && it !in triedIndices && available(lines[it])
-        }
-        if (candidates.isEmpty()) return null
-        preferredProviderGroupKey?.takeIf(String::isNotBlank)?.let { provider ->
-            candidates.firstOrNull { providerGroupKey(lines[it]) == provider }?.let { return it }
-        }
-        return candidates.first()
     }
 
     fun matchingIndex(lines: List<LineInfo>, sourceIdentity: String?): Int? {
