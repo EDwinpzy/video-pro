@@ -3,6 +3,7 @@ package com.qiubo.optimaltv.data.repo
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.source.HhkanSource.ChannelSection
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,5 +31,23 @@ class HomeFeedLayoutTest {
         val douban = listOf(ChannelSection("最新上映", listOf(variety("new"))), ChannelSection("豆瓣高分", listOf(variety("rated-first"), variety("rated-second"))))
         val result = HomeFeedLayout.sections("variety", emptyList(), emptyList(), douban)
         assertTrue(result.flatMap { it.items }.isEmpty())
+    }
+
+    @Test fun animeOmitsTheDoubanRatingSection() {
+        val titles = HomeFeedLayout.titles("anime")
+
+        assertFalse("豆瓣高分" in titles)
+        assertEquals(listOf("最近热门", "最近更新"), titles.drop(1))
+        assertTrue("豆瓣高分" in HomeFeedLayout.titles("documentary"))
+
+        fun anime(id: String) = item(id).copy(categoryId = "douban:anime", area = "中国大陆")
+        val douban =
+            listOf(
+                ChannelSection("最近热门", listOf(anime("hot"))),
+                ChannelSection("最近更新", listOf(anime("new"))),
+                ChannelSection("豆瓣高分", listOf(anime("rated"))),
+            )
+        val sections = HomeFeedLayout.sections("anime", emptyList(), emptyList(), douban)
+        assertFalse(sections.any { it.name == "豆瓣高分" })
     }
 }

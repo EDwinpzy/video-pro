@@ -70,6 +70,7 @@ internal object DanmakuLanePolicy {
 
 internal object DanmakuPresentationPolicy {
     const val BASE_TEXT_SIZE_SP = 24
+    const val BASE_TRAVEL_DURATION_MS = 9_000f
 
     fun laneCount(
         displayArea: DanmakuDisplayArea,
@@ -98,6 +99,11 @@ internal object DanmakuPresentationPolicy {
                 .coerceAtLeast(1)
         return glyphCount * textSizePx.coerceAtLeast(1f)
     }
+
+    fun travelSpeedPxPerMs(viewportWidthPx: Float, scrollSpeed: Float): Float =
+        viewportWidthPx.coerceAtLeast(0f) *
+            scrollSpeed.coerceIn(0.5f, 2f) /
+            BASE_TRAVEL_DURATION_MS
 }
 
 @Composable
@@ -167,7 +173,8 @@ private fun DanmakuCanvasOverlay(
         val laneHeightPx = with(density) { (34.dp * normalizedFontScale).toPx() }
         val topInsetPx = with(density) { 22.dp.toPx() }
         val gapPx = with(density) { 28.dp.toPx() }
-        val travelSpeedPxPerMs = widthPx * normalizedScrollSpeed / 6_500f
+        val travelSpeedPxPerMs =
+            DanmakuPresentationPolicy.travelSpeedPxPerMs(widthPx, normalizedScrollSpeed)
         val laneCount =
             DanmakuPresentationPolicy.laneCount(
                 displayArea = displayArea,

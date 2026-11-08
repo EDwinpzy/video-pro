@@ -17,8 +17,10 @@ its own category. The first recommendation section uses the official total
 ranking filtered by that category and displays two rows; other sections use
 one row. Movie and series sections use the corresponding official hot lists.
 Domestic animation uses Douban metadata, preserving the returned content
-type. Short drama hot/new sections use the official short drama catalogue;
-the short drama tab has no Douban rating section.
+type and omitting the Douban rating section. Short drama hot/new sections use
+the official short drama catalogue; the short drama tab also has no Douban
+rating section. Long episode lists in the player sidebar are grouped into
+pages so opening the panel does not build every episode row at once.
 Variety keeps only the category total ranking below its recent-history hero.
 
 After sign-in, an animated startup screen waits for all five category feeds and

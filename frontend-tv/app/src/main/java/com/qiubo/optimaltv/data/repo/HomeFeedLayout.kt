@@ -7,6 +7,7 @@ internal object HomeFeedLayout {
     fun titles(category: String): List<String> = listOf("大家都在看") + when (category) {
         "movie" -> listOf("高分电影", "电影热播", "院线热映", "即将上映", "冷门好片")
         "tv" -> listOf("国产新剧", "美剧续看", "韩剧在追", "日剧上新")
+        "anime" -> listOf("最近热门", "最近更新")
         "short" -> listOf("最近热门", "最近更新")
         "variety" -> emptyList()
         else -> listOf("最近热门", "最近更新", "豆瓣高分")
