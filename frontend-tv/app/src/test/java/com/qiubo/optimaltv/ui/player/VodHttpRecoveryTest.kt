@@ -12,41 +12,34 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class VodHttpRecoveryTest {
-    @Test fun deniedLineRefreshesThenTriesDifferentProviderAndNeverCyclesBack() {
+    @Test fun deniedLineRefreshesOnceThenStopsWithoutChangingSource() {
         val recovery = VodHttpRecovery()
-        val lines = listOf(line("a", "one"), line("b", "one"), line("c", "two"), line("d", "three"))
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(403, lines, 0))
-        assertEquals(VodHttpRecovery.Action.Fallback(2), recovery.recover(403, lines, 0))
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(403, lines, 2))
-        assertEquals(VodHttpRecovery.Action.Fallback(1), recovery.recover(403, lines, 2))
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(403, lines, 1))
-        assertEquals(VodHttpRecovery.Action.Stop, recovery.recover(403, lines, 1))
+        val selected = line("a", "one")
+        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(403, selected))
+        assertEquals(VodHttpRecovery.Action.Stop, recovery.recover(403, selected))
     }
 
-    @Test fun refreshBudgetUsesStableLineIdentityAcrossReorder() {
+    @Test fun refreshBudgetUsesStableLineIdentityAndResetsOnlyExplicitly() {
         val recovery = VodHttpRecovery()
         val a = line("a", "one")
-        val b = line("b", "two")
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(401, listOf(a, b), 0))
-        assertEquals(VodHttpRecovery.Action.Fallback(0), recovery.recover(401, listOf(b, a), 1))
+        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(401, a))
+        assertEquals(VodHttpRecovery.Action.Stop, recovery.recover(401, a.copy(label = "renamed")))
         recovery.reset()
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(401, listOf(b, a), 1))
+        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(401, a))
     }
 
-    @Test fun transientHttpErrorsHaveExtraRefreshButStillEndAndLegacySourcesStaySelected() {
+    @Test fun transientHttpErrorsHaveExtraRefreshButStillEndOnTheSelectedSource() {
         val recovery = VodHttpRecovery()
-        val lines = listOf(LineInfo("legacy", "legacy", "https://example.invalid/video.m3u8"))
-        assertNull(recovery.recover(200, lines, 0))
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(503, lines, 0))
-        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(503, lines, 0))
-        assertEquals(VodHttpRecovery.Action.Stop, recovery.recover(503, lines, 0))
+        val selected = LineInfo("legacy", "legacy", "https://example.invalid/video.m3u8")
+        assertNull(recovery.recover(200, selected))
+        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(503, selected))
+        assertEquals(VodHttpRecovery.Action.Refresh, recovery.recover(503, selected))
+        assertEquals(VodHttpRecovery.Action.Stop, recovery.recover(503, selected))
     }
 
-    @Test fun candidatesAlreadyFailedByOtherRecoveryPathsAreExcluded() {
+    @Test fun missingSelectedSourceStopsImmediately() {
         val recovery = VodHttpRecovery()
-        val lines = listOf(line("a", "one"), line("b", "two"), line("c", "three"))
-        recovery.recover(403, lines, 0, setOf(0, 1))
-        assertEquals(VodHttpRecovery.Action.Fallback(2), recovery.recover(403, lines, 0, setOf(0, 1)))
+        assertEquals(VodHttpRecovery.Action.Stop, recovery.recover(403, null))
     }
 
     private fun line(id: String, provider: String): LineInfo {

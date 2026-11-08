@@ -1,5 +1,7 @@
 package com.qiubo.optimaltv.ui.player
 
+import android.graphics.Bitmap
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +20,7 @@ import com.qiubo.optimaltv.data.prefs.DanmakuDisplayArea
 import com.qiubo.optimaltv.data.prefs.SettingsStore
 import com.qiubo.optimaltv.data.prefs.SkipSegmentSettings
 import com.qiubo.optimaltv.data.repo.LiveSourcePolicy
+import com.qiubo.optimaltv.data.repo.PlaybackRelayPolicy
 import com.qiubo.optimaltv.data.repo.SelectedSourceRefreshException
 import com.qiubo.optimaltv.data.repo.VodRepository
 import com.qiubo.optimaltv.data.source.DanmakuItem
@@ -485,16 +488,12 @@ class PlayerViewModel(
         private const val DANMAKU_REFRESH_MS = 4_000L
         private const val DANMAKU_RETRY_MS = 15_000L
         private const val DANMAKU_STALE_RETRY_MS = 250L
-        private val OFFICIAL_LINE_FALLBACK_CODES = setOf(
-            "playback_line_url_missing",
-            "playback_line_ticket_missing",
-            "playback_line_resolve_incomplete",
-            "playback_resolve_ticket_refresh_exhausted",
-            "playback_line_ticket_expired",
-            "playback_resolve_ticket_expired",
-            "playback_ticket_expired",
-            "playback_url_expired",
-        )
+        private const val EPISODE_SWITCH_FRAME_TIMEOUT_MS = 8_000L
+        private const val EPISODE_SWITCH_PAINT_DELAY_MS = 50L
+        /** Adjacent preload starts only after the current episode has a full startup reservoir. */
+        private const val SHORT_DRAMA_FORWARD_PRELOAD_MIN_BUFFER_MS = 30_000L
+        /** Backward preload is lower priority and gets a larger safety margin. */
+        private const val SHORT_DRAMA_BACKWARD_PRELOAD_MIN_BUFFER_MS = 45_000L
         val SPEED_STEPS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         val DANMAKU_FONT_SCALE_STEPS = listOf(0.8f, 1.0f, 1.2f)
         val DANMAKU_OPACITY_STEPS = listOf(0.4f, 0.6f, 0.8f, 1.0f)
@@ -505,6 +504,10 @@ class PlayerViewModel(
 
     private val _ui = MutableStateFlow(PlayerStartupStatePolicy.initial(vodId, epStart))
     val ui: StateFlow<PlayerUiState> = _ui.asStateFlow()
+
+    /** Last presented frame shown while a preloaded adjacent item starts its decoder. */
+    private val _switchFrame = MutableStateFlow<Bitmap?>(null)
+    val switchFrame: StateFlow<Bitmap?> = _switchFrame.asStateFlow()
 
     lateinit var engine: MediaEngine
         private set
@@ -548,11 +551,9 @@ class PlayerViewModel(
     /** One automatic stall-recovery action may resolve/prepare at a time. */
     private var stallRecoveryJob: Job? = null
     private var stallRecoveryGeneration = 0
-    private var triedLines = mutableSetOf<Int>()
     private val vodHttpRecovery = VodHttpRecovery()
     private var vodHttpRecoveryJob: Job? = null
     private var vodHttpDeadlineJob: Job? = null
-    private var httpRecoveryUsedFallback = false
     private var watchdogJob: Job? = null
     private var prefetchJob: Job? = null
     private var preloadNextJob: Job? = null
@@ -563,6 +564,10 @@ class PlayerViewModel(
     private var preloadAttemptedPreviousEpisode = -1
     /** Latest adjacent request while the previous item has not produced its first frame yet. */
     private var deferredAdjacentEpisodeTarget: Int? = null
+    /** Hold the old frame from capture until Media3 has committed the playlist transition. */
+    private var seamlessSwitchFrameHold = false
+    private var seamlessSwitchCaptureGeneration = 0
+    private var switchFrameTimeoutJob: Job? = null
     private var observedMediaSequence = 0
     private var skipIntroApplied = false
     private var stallJob: Job? = null
@@ -611,12 +616,6 @@ class PlayerViewModel(
         liveAutoRetryJob = viewModelScope.launch {
             delay(30_000)
             if (_ui.value.fatalMsg != null && _ui.value.isLive) {
-                triedLines.clear()
-                // v1.16 IPTV：30s 自动重试从主线路整队重启（不卡死在耗尽的备用线尾）
-                if (vodId.startsWith("iptv:") && iptvPrimary != null) {
-                    iptvRestartFromPrimary()
-                    return@launch
-                }
                 _ui.value = _ui.value.copy(fatalMsg = null)
                 boot(fresh = true)
             }
@@ -699,10 +698,6 @@ class PlayerViewModel(
         runCatching { if (hasEngine()) engine.pause() }
     }
 
-    /** v1.16 IPTV 多源备份队列：当前频道的备用线路（switchIptv 传入，主线路失败时逐条热切换） */
-    private val iptvBackups = ArrayDeque<String>()
-    /** v1.16 当前频道的主线路与备用清单（30s 自动重试/手动重试从主线路整队重启） */
-    private var iptvPrimary: Triple<String, String, List<String>>? = null
     private var digitBuffer = ""
     private var digitJob: Job? = null
     private var systemResumeNeeded = false
@@ -742,24 +737,19 @@ class PlayerViewModel(
     }
 
     /**
-     * v1.15 电视页内嵌换台（TvScreen 侧边栏选台 / 画面态 UP-DOWN 换台 / 失败自动跳台）：
+     * v1.15 电视页内嵌换台（TvScreen 侧边栏选台 / 画面态 UP-DOWN 换台）：
      * 同一 VM 会话内切换 IPTV 频道——内部仍走 bootIptv 全链路（UrlGuard 字符串级+DNS
      * 解析级双重复验、直播看门狗、卡顿检测、错误态 30s 自动重试、DECODING_FAILED
      * 三段回退），不绕过任何安全校验。
-     * v1.16：新增 [backups]（同频道备用线路）——主线路失败时 onLineFail 逐条热切换，
-     * 全耗尽才进「错误态 30s 自动重试 + 页面跳台」旧链路。
+     * 线路选择完全由用户决定：失败只重试当前线路，绝不自动换成频道里的另一条线路。
      * 换台 = 新会话：换线/重试/回退配额与自动重试计数全部重置（等价新建 VM）。
      */
-    fun switchIptv(name: String, url: String, backups: List<String> = emptyList()) {
+    fun switchIptv(name: String, url: String) {
         beginUserPlaybackSelection()
         clearFirstFrameWaitBudgets()
         danmakuJob?.cancel()
         danmakuEpisodeId = null
         vodId = "iptv:$name|$url"
-        iptvPrimary = Triple(name, url, backups)
-        iptvBackups.clear()
-        iptvBackups.addAll(backups)
-        triedLines.clear()
         sameLineRetries = 0
         softwareFallbackTried = false
         vlcFallbackTried = false
@@ -772,7 +762,7 @@ class PlayerViewModel(
             controlsVisible = false, panel = Panel.NONE, srcPickerVisible = false,
             danmakuAvailable = false, danmakuLoading = false, danmakuStatus = "", danmakuItems = emptyList(),
         )
-        OtvLog.i("iptv switchIptv: $name（主线路+备用 ${backups.size} 条）")
+        OtvLog.i("iptv switchIptv: $name（用户选定线路）")
         viewModelScope.launch { bootIptv() }
     }
 
@@ -1081,6 +1071,7 @@ class PlayerViewModel(
                 if (engine !== observedEngine) return@collect
                 if (st.mediaSequence > observedMediaSequence) {
                     observedMediaSequence = st.mediaSequence
+                    seamlessSwitchFrameHold = false
                     promotePreloadedEpisode(st)
                 }
                 // v1.19 流畅度：控制条隐藏时把进度类字段（positionMs/bufferedAheadMs，
@@ -1132,10 +1123,11 @@ class PlayerViewModel(
                     firstFrameRendered = st.firstFrameRendered,
                     seamlessEpisodeSwitch =
                         currentUi.seamlessEpisodeSwitch &&
-                            !st.firstFrameRendered &&
+                            (seamlessSwitchFrameHold || !st.firstFrameRendered) &&
                             st.state != EnginePlayState.ERROR,
                 )
-                if (st.firstFrameRendered) {
+                if (st.firstFrameRendered && !seamlessSwitchFrameHold) {
+                    clearSwitchFrame()
                     deferredAdjacentEpisodeTarget?.let { target ->
                         deferredAdjacentEpisodeTarget = null
                         if (target != _ui.value.epIndex && target in 0 until _ui.value.epCount) {
@@ -1238,6 +1230,7 @@ class PlayerViewModel(
     private fun maybeStartAdjacentEpisodePreload(st: com.qiubo.optimaltv.playback.EngineUiState) {
         val ui = _ui.value
         if (ui.isLive || ui.isMovie || ui.fatalMsg != null || ui.sourceResolving) return
+        if (ui.epCount <= 1) return
         if (hostInBackground || !hasEngine() || !engine.supportsSeamlessNext) return
         if (st.state != EnginePlayState.READY || !st.isPlaying || st.durationMs <= 0L) return
         val shortDrama = isCurrentShortDrama(durationMs = st.durationMs)
@@ -1248,27 +1241,35 @@ class PlayerViewModel(
             episodeCount = ui.epCount,
         )
         val previous = (ui.epIndex - 1).takeIf { shortDrama && it in 0 until ui.epCount }
-        if (previous != null &&
-            preloadedPrevious?.episodeIndex != previous &&
-            preloadAttemptedPreviousEpisode != previous
+        val nextPending =
+            next != null &&
+                preloadedNext?.episodeIndex != next &&
+                preloadAttemptedNextEpisode != next
+        if (nextPending && next != null) {
+            val shouldPreloadForward =
+                if (shortDrama) {
+                    st.bufferedAheadMs >= SHORT_DRAMA_FORWARD_PRELOAD_MIN_BUFFER_MS
+                } else {
+                    NextEpisodePreloadPolicy.shouldStart(
+                        positionMs = st.positionMs,
+                        durationMs = st.durationMs,
+                        introSkipSeconds = ui.skipIntroSeconds,
+                        outroSkipSeconds = ui.skipOutroSeconds,
+                        hasNextEpisode = true,
+                    )
+                }
+            if (shouldPreloadForward) startEpisodePreload(next, direction = 1)
+        }
+        if (!shortDrama || previous == null ||
+            preloadedPrevious?.episodeIndex == previous ||
+            preloadAttemptedPreviousEpisode == previous
+        ) return
+        val forwardSettled = next == null || preloadedNext?.episodeIndex == next
+        if (forwardSettled &&
+            st.bufferedAheadMs >= SHORT_DRAMA_BACKWARD_PRELOAD_MIN_BUFFER_MS
         ) {
             startEpisodePreload(previous, direction = -1)
         }
-        if (next == null ||
-            preloadedNext?.episodeIndex == next ||
-            preloadAttemptedNextEpisode == next
-        ) {
-            return
-        }
-        if (!shortDrama && !NextEpisodePreloadPolicy.shouldStart(
-                positionMs = st.positionMs,
-                durationMs = st.durationMs,
-                introSkipSeconds = ui.skipIntroSeconds,
-                outroSkipSeconds = ui.skipOutroSeconds,
-                hasNextEpisode = true,
-            )
-        ) return
-        startEpisodePreload(next, direction = 1)
     }
 
     private fun isCurrentShortDrama(durationMs: Long = _ui.value.durationMs): Boolean =
@@ -1282,6 +1283,10 @@ class PlayerViewModel(
             episodeCount = _ui.value.epCount,
             durationMs = durationMs,
         )
+
+    /** Only multi-episode short dramas use the shallow switch buffer and playlist preload. */
+    private fun usesEpisodeSwitchOptimization(): Boolean =
+        _ui.value.epCount > 1 && !_ui.value.isMovie && isCurrentShortDrama()
 
     private fun maybeAdvanceForOutro(st: com.qiubo.optimaltv.playback.EngineUiState) {
         val ui = _ui.value
@@ -1365,14 +1370,11 @@ class PlayerViewModel(
         vodReachedReadyThisAttempt = false
         skipIntroApplied = false
         clearFirstFrameWaitBudgets()
-        triedLines.clear()
-        triedLines += preload.lineIndex
         sameLineRetries = 0
         softwareFallbackTried = false
         vlcFallbackTried = false
         audioCodecChecked = false
         recoveryAttempt = 0
-        lastAutoSwitchAt = -1L
         preloadAttemptedNextEpisode = -1
         preloadAttemptedPreviousEpisode = -1
         _ui.value = previous.copy(
@@ -1463,7 +1465,7 @@ class PlayerViewModel(
                 ) ?: return@launch
                 if (!isCurrentPreload(generation, expectedEngine, expectedEpoch)) return@launch
                 val selectedLine = selection.lines.getOrNull(selection.lineIndex) ?: return@launch
-                val preferRelay = selectedLine.playRef.isBlank() || selectedLine.playRef !in relayBroken
+                val preferRelay = PlaybackRelayPolicy.shouldPreferRelay(selectedLine, relayBroken)
                 val playback = repo.resolvePlayback(selectedLine, preferRelay, forceRefresh = false)
                 if (playback.url.isBlank() || !isCurrentPreload(generation, expectedEngine, expectedEpoch)) {
                     return@launch
@@ -1888,10 +1890,10 @@ class PlayerViewModel(
         val gen = ++sessionGen
         val sessionEngine = engine
         val sessionEngineEpoch = engineEpochCounter
+        sessionViaRelay = false
         awaitingPrepare = false
         startedThisSession = false
         stallRecoveries = 0
-        triedLines += lineIdx
         _ui.value = _ui.value.copy(
             activeLine = lineIdx,
             fatalMsg = null,
@@ -1942,7 +1944,7 @@ class PlayerViewModel(
                 else -> {
                     // v1.14 点播默认走本地中继（多连接并行拉片对抗 CDN 单连接限速，根治
                     // 「20 分钟后频繁卡顿」）；该线路中继已被判不可用时直连
-                    val preferRelay = line.playRef.isBlank() || line.playRef !in relayBroken
+                    val preferRelay = PlaybackRelayPolicy.shouldPreferRelay(line, relayBroken)
                     repo.resolvePlayback(line, preferRelay, forceRefresh = forceFresh)
                 }
             }
@@ -1959,26 +1961,6 @@ class PlayerViewModel(
         } catch (unavailable: DongpianAuthException) {
             currentCoroutineContext().ensureActive()
             if (!isCurrentPlaybackRequest(gen, lineIdx, sessionEngine, sessionEngineEpoch)) return
-            if (isVod && unavailable.wireCode in OFFICIAL_LINE_FALLBACK_CODES) {
-                val state = _ui.value
-                val next = VodSourceSelectionPolicy.selectFallbackIndex(
-                    lines = state.lines,
-                    currentIndex = lineIdx,
-                    triedIndices = triedLines,
-                    preferredProviderGroupKey =
-                        VodSourceSelectionPolicy.providerGroupKey(state.lines.getOrNull(lineIdx)),
-                )
-                if (next != null) {
-                    markAutoSwitch(next)
-                    val resume = if (startPos > 1_000L) startPos else resumePositionForVodRetry()
-                    OtvLog.w(
-                        "官方线路不可播 line=$lineIdx code=${unavailable.wireCode} " +
-                            "→ 回退线路 $next(${state.lines[next].label})",
-                    )
-                    startSession(next, resume, forceFresh = true)
-                    return
-                }
-            }
             _ui.value = _ui.value.copy(sourceResolving = false)
             onLineFail("所选影视源解析失败（${unavailable.message ?: "未知错误"}）")
             return
@@ -2005,6 +1987,15 @@ class PlayerViewModel(
         if (_ui.value.isLive) livePlayingUrl = playUrl
         sessionUrl = playUrl
         sessionPlayback = playback
+        runCatching {
+            val uri = Uri.parse(playUrl)
+            OtvLog.i(
+                "media route=${if (sessionViaRelay) "relay" else "direct"} " +
+                    "host=${uri.host.orEmpty()} " +
+                    "suffix=${uri.lastPathSegment.orEmpty().takeLast(24)} " +
+                    "mime=${playback.mimeType.ifBlank { "-" }}",
+            )
+        }
         // 直播窗口探测（2026-09-16 长跑卡顿根治）：起播前量一次清单的可播放窗口，
         // 交引擎选目标延迟/缓冲档——中继足球源窗口只有 ~6s，固定「落后 15s」不可达，
         // 速度控制会长期偏离实时并最终掉出滑动窗口（「十几分钟后卡死」的根因）。
@@ -2035,7 +2026,7 @@ class PlayerViewModel(
         awaitingPrepare = true
         try {
             if (isVod) {
-                sessionEngine.setEpisodeSwitchBufferPreferred(isCurrentShortDrama())
+                sessionEngine.setEpisodeSwitchBufferPreferred(usesEpisodeSwitchOptimization())
             }
             sessionEngine.prepare(
                 PrepareRequest(
@@ -2082,13 +2073,6 @@ class PlayerViewModel(
     private var vodLadderJob: Job? = null
     /** 阶梯代次跟踪：作废旧代阶梯、保证「只升一档」。 */
     private val firstFrameLadder = FirstFrameRecoveryLadderTracker()
-    /**
-     * 上次**自动**切线时刻（单调时钟，-1 = 从未切过）。
-     * 供 [LongPlaybackHealthPolicy.canSwitchNow] 做 20–30s 切线冷却：
-     * 刚失败/刚切过的线在冷却内不自动切回，防止「线1→线2→线1」把线路耗光。
-     * 用户手动切线（[switchLine]）不算自动切线，不受冷却约束。
-     */
-    private var lastAutoSwitchAt = -1L
 
     private fun armFirstFrameWatchdog() {
         firstFrameJob?.cancel()
@@ -2264,40 +2248,6 @@ class PlayerViewModel(
         }
     }
 
-    /**
-     * 首帧阶梯切线时的候选选择：跳过已试过的线，并避开「刚失败过的那条线」。
-     *
-     * 冷却窗口内的回切会被 [LongPlaybackHealthPolicy.canSwitchNow] 拦下——同一条线
-     * 刚失败就立刻切回去，在 20s 内很容易把三条线耗光（比卡住更糟）。
-     */
-    private fun pickNextLineForVod(): Int? {
-        val s = _ui.value
-        val cur = s.activeLine
-        val now = android.os.SystemClock.elapsedRealtime()
-        // Reusing exhausted sources made unavailable providers bounce forever and reset watchdogs.
-        return VodSourceAttemptPolicy.next(s.lines.size, cur, triedLines) { canAutoSwitchTo(it, now) }
-    }
-
-    /** 自动切线是否允许（切线冷却未挡住刚失败的那条线）。用户手动切线不受此限。 */
-    private fun canAutoSwitchTo(candidateIndex: Int, nowMs: Long): Boolean =
-        LongPlaybackHealthPolicy.canSwitchNow(
-            nowMs = nowMs,
-            lastSwitchAtMs = lastAutoSwitchAt,
-            candidateIndex = candidateIndex,
-            failedIndex = _ui.value.activeLine,
-        )
-
-    /**
-     * 记录一次**自动**切线，作为 20–30s 冷却的起点。
-     *
-     * 冷却只拦「切回刚失败/刚切过的那一条」，切到别的线路永远放行——否则冷却会把
-     * 恢复链锁死（只剩刚那条线可用时反而不能自救）。
-     */
-    private fun markAutoSwitch(targetIndex: Int) {
-        if (targetIndex == _ui.value.activeLine) return
-        lastAutoSwitchAt = android.os.SystemClock.elapsedRealtime()
-    }
-
     /** 直播保留原有看门狗；影视点播失败后持续重试当前线路。 */
     private fun armWatchdog() {
         watchdogJob?.cancel()
@@ -2377,9 +2327,9 @@ class PlayerViewModel(
                             lastBufferAction = action
                             when (action) {
                                 LongPlaybackHealthPolicy.Action.PREP_BACKUP ->
-                                    OtvLog.i("缓冲 ${bufferingMs}ms 无增长 → 预备备用线（不打断）")
+                                    OtvLog.i("缓冲 ${bufferingMs}ms 无增长 → 继续观察当前线路")
                                 LongPlaybackHealthPolicy.Action.SWITCH -> {
-                                    OtvLog.w("缓冲 ${bufferingMs}ms 无增长 → 切备用线")
+                                    OtvLog.w("缓冲 ${bufferingMs}ms 无增长 → 当前线路恢复")
                                     telemetry.mark(PlaybackTelemetry.Stage.AUTO_SWITCH, detail = "reason=buffering")
                                     recoverPlaybackStall("BUFFERING ${bufferingMs / 1000}s 无进展")
                                 }
@@ -2703,20 +2653,6 @@ class PlayerViewModel(
                         state.lines.getOrNull(current)?.playRef?.takeIf { it.isNotBlank() }?.let(repo::bustPlayCache)
                         startRecoverySession(requestToken, current, if (state.isLive) 0L else resume)
                     }
-                    RecoveryAction.SWITCH_SOURCE -> {
-                        if (state.isLive || isFootballVod) {
-                            val next = pickNextLineForVod()
-                            if (next != null) {
-                                markAutoSwitch(next)
-                                startRecoverySession(requestToken, next, if (state.isLive) 0L else resume)
-                            } else {
-                                recreateEngineForRecovery(current, resume, requestToken)
-                            }
-                        } else {
-                            // 点播恢复继续使用当前影视源；只重建引擎，不跳到另一条源。
-                            recreateEngineForRecovery(current, resume, requestToken)
-                        }
-                    }
                     RecoveryAction.RECREATE_ENGINE -> recreateEngineForRecovery(current, resume, requestToken)
                     RecoveryAction.RESET_RUNTIME -> {
                         com.qiubo.optimaltv.playback.StreamDecryptServer.reset()
@@ -2876,7 +2812,6 @@ class PlayerViewModel(
         vodHttpRecoveryJob?.cancel()
         vodHttpRecoveryJob = null
         vodHttpRecovery.reset()
-        httpRecoveryUsedFallback = false
         playbackStartIntent.beginUserSelection()
         currentSessionAutoplay = true
     }
@@ -3154,13 +3089,7 @@ class PlayerViewModel(
             runCatching { settings.rememberLine(vodId, engine.engineId, _ui.value.activeLine) }
             if (!isFootballVod) {
                 VodSourceSelectionPolicy.identity(_ui.value.lines.getOrNull(_ui.value.activeLine))?.let { source ->
-                    runCatching {
-                        if (httpRecoveryUsedFallback && renderedFirstFrame) {
-                            settings.rememberVodSource(vodId, source)
-                        } else {
-                            settings.rememberVodSourceIfMissing(vodId, source)
-                        }
-                    }
+                    runCatching { settings.rememberVodSourceIfMissing(vodId, source) }
                 }
             }
             // L0 last_good 记忆：这次成功起播的线路，下次优先直接用它（省掉整轮匹配）。
@@ -3325,48 +3254,10 @@ class PlayerViewModel(
         }
     }
 
-    /**
-     * v1.16 IPTV 多源备份轮换：当前线路失败 → 同频道下一备用线路热切换（复用引擎，
-     * 渲染面停帧过渡，无黑屏重建）。返回 true = 已接管；备用耗尽返回 false 落入直播
-     * 常规失败链（同线重试 → 错误态 30s 自动重试 + 页面层自动跳台）。
-     */
-    private fun iptvRotateLine(reason: String): Boolean {
-        if (vodId.isEmpty() || !vodId.startsWith("iptv:") || iptvBackups.isEmpty()) return false
-        val name = vodId.removePrefix("iptv:").substringBefore('|')
-        val next = iptvBackups.removeFirst()
-        vodId = "iptv:$name|$next"
-        sameLineRetries = 0
-        OtvLog.w("iptv 线路失败($reason) → 备用线路热切换（剩 ${iptvBackups.size} 条）url=${next.take(80)}")
-        _ui.value = _ui.value.copy(
-            lines = listOf(LineInfo(vodId, name, next)), activeLine = 0, fatalMsg = null,
-        )
-        viewModelScope.launch { startSession(0, 0L, reuseResolvedUrl = true) }
-        return true
-    }
-
-    /**
-     * v1.16 IPTV 重试从主线路整队重启：备用线路耗尽进错误态后，30s 自动重试/手动重试
-     * 若仍播「最后一条已证死的备用线」必然再失败——重置为主线路 + 恢复完整备用队列
-     * （源可能已恢复），与整页重进等价但不丢电视页内嵌会话。
-     */
-    private fun iptvRestartFromPrimary() {
-        val p = iptvPrimary ?: run { viewModelScope.launch { boot(fresh = true) }; return }
-        vodId = "iptv:${p.first}|${p.second}"
-        iptvBackups.clear()
-        iptvBackups.addAll(p.third)
-        triedLines.clear()
-        sameLineRetries = 0
-        softwareFallbackTried = false
-        vlcFallbackTried = false
-        OtvLog.i("iptv 重试：回到主线路 ${p.first}（备用 ${p.third.size} 条恢复）")
-        _ui.value = _ui.value.copy(fatalMsg = null, title = p.first, isLive = true)
-        viewModelScope.launch { bootIptv() }
-    }
-
     /** Definite HTTP denials get a bounded path rather than the transient-network retry loop. */
     private fun recoverVodHttpFailure(status: Int): Boolean {
         val state = _ui.value
-        val action = vodHttpRecovery.recover(status, state.lines, state.activeLine, triedLines) ?: return false
+        val action = vodHttpRecovery.recover(status, state.lines.getOrNull(state.activeLine)) ?: return false
         val resumeMs = resumePositionForVodRetry()
         val requestGeneration = sessionGen
         val selectionGeneration = vodSelectionGeneration
@@ -3385,8 +3276,6 @@ class PlayerViewModel(
             OtvLog.w("VOD HTTP recovery exhausted status=$status line=${state.activeLine}")
             return true
         }
-        val next = (action as? VodHttpRecovery.Action.Fallback)?.index ?: state.activeLine
-        if (action is VodHttpRecovery.Action.Fallback) httpRecoveryUsedFallback = true
         _ui.value = _ui.value.copy(sourceResolving = true, isPlaying = false)
         if (vodHttpDeadlineJob?.isActive != true) {
             vodHttpDeadlineJob = viewModelScope.launch {
@@ -3399,14 +3288,18 @@ class PlayerViewModel(
                 )
             }
         }
-        OtvLog.i("VOD HTTP recovery status=$status line=${state.activeLine} next=$next fresh=true")
+        OtvLog.i("VOD HTTP recovery status=$status line=${state.activeLine} same-source fresh=true")
         vodHttpRecoveryJob = viewModelScope.launch {
             if (status == 408 || status == 429 || status >= 500) delay(2_000)
             if (selectionGeneration != vodSelectionGeneration || requestGeneration != sessionGen ||
                 engine !== observedEngine
             ) return@launch
-            if (next != state.activeLine) markAutoSwitch(next)
-            startSession(next, resumeMs, forceFresh = true, startTrigger = PlaybackStartTrigger.AUTOMATIC_RECOVERY)
+            startSession(
+                state.activeLine,
+                resumeMs,
+                forceFresh = true,
+                startTrigger = PlaybackStartTrigger.AUTOMATIC_RECOVERY,
+            )
         }
         return true
     }
@@ -3434,8 +3327,6 @@ class PlayerViewModel(
     private fun onLineFail(reason: String, allowSameLineRetry: Boolean = true) {
         if (_ui.value.fatalMsg != null) return
         awaitingPrepare = false
-        // v1.16：IPTV 频道内备用线路优先（换线路 ≠ 换频道，观众无感）
-        if (iptvRotateLine(reason)) return
         if (_ui.value.isLive) {
             // 解码类失败重解析无意义（URL 本身有效，是解码器不行）——直进错误态
             // 等 30s 自动重试。2026-08-30 实测教训：尤文场 bb 流 AVC High 在模拟器
@@ -3450,28 +3341,15 @@ class PlayerViewModel(
                 return
             }
             val cur = _ui.value.activeLine
-            val hasAlternate = _ui.value.lines.indices.any { it != cur && it !in triedLines }
-            when (PlaybackRecoveryPolicy.liveLineFailureAction(sameLineRetries, hasAlternate)) {
+            when (PlaybackRecoveryPolicy.liveLineFailureAction(sameLineRetries)) {
                 RecoveryAction.REFRESH_CURRENT -> {
                     sameLineRetries++
                     OtvLog.w("line fail($cur): $reason → 同线 fresh 重解析（仅重试一次）")
                     viewModelScope.launch { startSession(cur, 0L) }
                 }
-                RecoveryAction.SWITCH_SOURCE -> {
-                    sameLineRetries = 0
-                    val next = _ui.value.lines.indices.firstOrNull { it != cur && it !in triedLines }
-                    if (next == null) {
-                        stopForFatal()
-                        _ui.value = _ui.value.copy(fatalMsg = reason, controlsVisible = false)
-                        scheduleLiveAutoRetry()
-                    } else {
-                        OtvLog.w("line fail($cur): $reason → 切换备用源 $next")
-                        viewModelScope.launch { startSession(next, 0L) }
-                    }
-                }
                 else -> {
                     sameLineRetries = 0
-                    OtvLog.w("line fail($cur): $reason → 所有直播源失败，进入错误态")
+                    OtvLog.w("line fail($cur): $reason → 当前信号源重试失败，进入错误态")
                     viewModelScope.launch { saveProgress(force = false) }
                     stopForFatal()
                     _ui.value = _ui.value.copy(fatalMsg = reason, controlsVisible = false)
@@ -3485,11 +3363,7 @@ class PlayerViewModel(
             val lineIndex = _ui.value.activeLine
             val line = _ui.value.lines.getOrNull(lineIndex)
             // Keep the relay-to-direct escape hatch, then retry the same selected source forever.
-            if (line != null && line.playRef.isNotBlank() &&
-                line.playRef !in relayBroken && sessionViaRelay
-            ) {
-                relayBroken += line.playRef
-                repo.bustPlayCache(line.playRef)
+            if (sessionViaRelay && markRelayBroken(line)) {
                 OtvLog.w("VOD 中继失败，标记直连后继续同源重试 line=$lineIndex")
             }
             scheduleVodRetry(reason, lineIndex, resumePositionForVodRetry())
@@ -3501,11 +3375,7 @@ class PlayerViewModel(
         // 直连救活的线路记入 relayBroken，本会话后续直接走直连不再撞墙。
         if (!_ui.value.isLive && allowSameLineRetry) {
             val curLine = _ui.value.lines.getOrNull(_ui.value.activeLine)
-            if (curLine != null && curLine.playRef.isNotBlank() &&
-                curLine.playRef !in relayBroken && sessionViaRelay
-            ) {
-                relayBroken += curLine.playRef
-                repo.bustPlayCache(curLine.playRef)
+            if (sessionViaRelay && markRelayBroken(curLine)) {
                 OtvLog.w("line fail(${_ui.value.activeLine}): 中继路径失败 → 同线直连重试")
                 val pos = _ui.value.positionMs
                 viewModelScope.launch {
@@ -3514,21 +3384,19 @@ class PlayerViewModel(
                 return
             }
         }
-        if (isFootballVod) {
-            val next = pickNextLineForVod()
-            if (next != null) {
-                Log.w(TAG, "football VOD line fail(${_ui.value.activeLine}): $reason → switch $next")
-                markAutoSwitch(next)
-                val pos = _ui.value.positionMs
-                viewModelScope.launch { startSession(next, if (pos > 1_000) pos else 0L) }
-                return
-            }
-        }
         Log.w(TAG, "VOD line fail(${_ui.value.activeLine}): $reason; selected source remains active")
-        OtvLog.w(if (isFootballVod) "足球回放线路失败：没有备用线路" else "点播线路失败：保留当前影视源，显示错误并等待手动重试或切换")
+        OtvLog.w("点播线路失败：保留当前影视源，显示错误并等待手动重试或切换")
         viewModelScope.launch { saveProgress(force = false) }
         stopForFatal()
         _ui.value = _ui.value.copy(fatalMsg = reason, controlsVisible = false)
+    }
+
+    /** Remember the selected line, not just playRef lines, so official relay failures go direct. */
+    private fun markRelayBroken(line: LineInfo?): Boolean {
+        val identity = PlaybackRelayPolicy.relayFailureIdentity(line) ?: return false
+        if (!relayBroken.add(identity)) return false
+        line?.playRef?.takeIf(String::isNotBlank)?.let(repo::bustPlayCache)
+        return true
     }
 
     // ---------- 用户操作 ----------
@@ -3542,14 +3410,8 @@ class PlayerViewModel(
         // 直播重试同走 fresh（直播稳定性方案修复 2）：服务端 STREAM_CACHE 会把成功结果
         // 缓存 300s，普通重试拿回的还是那个已过期/已受限的 URL → 「信号尚未开播」死循环
         if (_ui.value.lines.isEmpty() || _ui.value.isLive) {
-            triedLines.clear()
             liveAutoRetries = 0   // 手动重试重置自动重试配额
             liveEndedRecoveries = 0
-            // v1.16 IPTV：手动重试从主线路整队重启（见 iptvRestartFromPrimary）
-            if (vodId.startsWith("iptv:") && iptvPrimary != null) {
-                iptvRestartFromPrimary()
-                return
-            }
             _ui.value = _ui.value.copy(fatalMsg = null)
             if (_ui.value.isLive) viewModelScope.launch { boot(fresh = true) }
             else launchSourceBoot(fresh = true)
@@ -3557,8 +3419,6 @@ class PlayerViewModel(
         }
         val line = _ui.value.activeLine
         val pos = _ui.value.positionMs
-        triedLines.clear()
-        lastAutoSwitchAt = -1L   // 手动重试 = 显式重置，切线冷却不该拦住
         if (_ui.value.isLive) {
             viewModelScope.launch { startSession(line, if (pos > 1_000) pos else 0L) }
         } else {
@@ -3573,8 +3433,6 @@ class PlayerViewModel(
         cancelStallRecovery()
         recoveryAttempt = 0
         val pos = state.positionMs
-        // 手动切源 = 用户重选起点：清空换线尝试记录——旧记录会把此前起播过的线路
-        // 当「已试过」跳过（实测 bb 失败后跳过此前正常播放的 plu，全线耗尽进错误态）
         // 用户一按就停住旧源并进入缓冲态，避免解析新地址期间继续播放旧线路画面。
         val selectionRequest = if (state.isLive) null else supersedePendingVodSession()
         if (state.isLive) {
@@ -3593,7 +3451,6 @@ class PlayerViewModel(
             sourceResolving = !state.isLive,
             playState = EnginePlayState.BUFFERING,
         )
-        triedLines.clear()
         sameLineRetries = 0
         // 需求③（2026-09-07）：直播手动选源 → 持久化，下次进直播默认直选该源
         if (_ui.value.isLive) {
@@ -4090,9 +3947,12 @@ class PlayerViewModel(
     fun switchEpisode(ep: Int) {
         val cur = _ui.value
         if (ep !in 0 until cur.epCount || ep == cur.epIndex || cur.isLive) return
-        if (cur.seamlessEpisodeSwitch && !cur.firstFrameRendered) {
+        if (seamlessSwitchFrameHold ||
+            (cur.seamlessEpisodeSwitch && !cur.firstFrameRendered)
+        ) {
             if (ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
-                    seamlessSwitchInFlight = cur.seamlessEpisodeSwitch,
+                    seamlessSwitchInFlight =
+                        seamlessSwitchFrameHold || cur.seamlessEpisodeSwitch,
                     firstFrameRendered = cur.firstFrameRendered,
                     requestedEpisode = ep,
                     currentEpisode = cur.epIndex,
@@ -4199,9 +4059,6 @@ class PlayerViewModel(
             }
             val matchedLineIndex = lineIndex
             stallRecoveries = 0
-            triedLines.clear()
-            // 换集是用户显式动作：上一集的切线冷却不该连累新的一集。
-            lastAutoSwitchAt = -1L
             _ui.value = _ui.value.copy(
                 epIndex = refreshedIndex,
                 epCount = refreshedItem.episodes.size.coerceAtLeast(1),
@@ -4261,18 +4118,70 @@ class PlayerViewModel(
             controlsVisible = false,
             srcPickerVisible = false,
         )
-        val skipped =
-            if (direction > 0) engine.skipToQueuedNextEpisode()
-            else engine.skipToQueuedPreviousEpisode()
-        if (!skipped) {
-            _ui.value = _ui.value.copy(seamlessEpisodeSwitch = current.seamlessEpisodeSwitch)
-            return false
+        val expectedEngine = engine
+        val expectedEpoch = engineEpochCounter
+        val expectedGeneration = sessionGen
+        seamlessSwitchFrameHold = true
+        val captureGeneration = ++seamlessSwitchCaptureGeneration
+        switchFrameTimeoutJob?.cancel()
+        switchFrameTimeoutJob = viewModelScope.launch {
+            delay(EPISODE_SWITCH_FRAME_TIMEOUT_MS)
+            if (captureGeneration != seamlessSwitchCaptureGeneration) return@launch
+            seamlessSwitchFrameHold = false
+            clearSwitchFrame()
+            deferredAdjacentEpisodeTarget = null
+            _ui.value = _ui.value.copy(seamlessEpisodeSwitch = false)
+            OtvLog.w("切集首帧等待超时，恢复直接操作 ep=${ep + 1}")
         }
-        OtvLog.i(
-            "使用预加载队列无缝进入${if (direction > 0) "下一集" else "上一集"} " +
-                "ep=${ep + 1}",
-        )
+        expectedEngine.captureCurrentFrame { frame ->
+            if (captureGeneration != seamlessSwitchCaptureGeneration) return@captureCurrentFrame
+            if (engine !== expectedEngine ||
+                engineEpochCounter != expectedEpoch ||
+                sessionGen != expectedGeneration ||
+                !_ui.value.seamlessEpisodeSwitch
+            ) {
+                clearSwitchFrame()
+                return@captureCurrentFrame
+            }
+            _switchFrame.value = frame
+            viewModelScope.launch {
+                // Give Compose one display frame to put the captured bitmap above the SurfaceView
+                // before Media3 resets its video surface for the next playlist item.
+                delay(EPISODE_SWITCH_PAINT_DELAY_MS)
+                if (captureGeneration != seamlessSwitchCaptureGeneration ||
+                    engine !== expectedEngine ||
+                    engineEpochCounter != expectedEpoch ||
+                    sessionGen != expectedGeneration ||
+                    !_ui.value.seamlessEpisodeSwitch
+                ) {
+                    if (captureGeneration == seamlessSwitchCaptureGeneration) clearSwitchFrame()
+                    return@launch
+                }
+                val skipped =
+                    if (direction > 0) expectedEngine.skipToQueuedNextEpisode()
+                    else expectedEngine.skipToQueuedPreviousEpisode()
+                if (!skipped) {
+                    clearSwitchFrame()
+                    _ui.value = _ui.value.copy(seamlessEpisodeSwitch = current.seamlessEpisodeSwitch)
+                    OtvLog.w("预加载队列切集失败，回退普通换集 ep=${ep + 1}")
+                    switchEpisode(ep)
+                    return@launch
+                }
+                OtvLog.i(
+                    "使用预加载队列无缝进入${if (direction > 0) "下一集" else "上一集"} " +
+                        "ep=${ep + 1}",
+                )
+            }
+        }
         return true
+    }
+
+    private fun clearSwitchFrame() {
+        switchFrameTimeoutJob?.cancel()
+        switchFrameTimeoutJob = null
+        seamlessSwitchFrameHold = false
+        seamlessSwitchCaptureGeneration++
+        _switchFrame.value = null
     }
 
     fun requestExit() {

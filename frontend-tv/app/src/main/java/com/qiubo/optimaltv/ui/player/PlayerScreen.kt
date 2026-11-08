@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -60,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -70,6 +72,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -141,6 +144,7 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
         },
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val switchFrame by vm.switchFrame.collectAsStateWithLifecycle()
     val shortDramaEpisodeKeys = remember(vodId) { ShortDramaEpisodeKeyHandler() }
     val catalogCategoryId = remember(vodId, ui.title, ui.sourceResolving) {
         Graph.repo.itemById(vodId)?.categoryId.orEmpty()
@@ -355,6 +359,14 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
+            switchFrame?.let { frame ->
+                Image(
+                    bitmap = frame.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             if (!ui.isLive &&
                 ui.danmakuEnabled &&

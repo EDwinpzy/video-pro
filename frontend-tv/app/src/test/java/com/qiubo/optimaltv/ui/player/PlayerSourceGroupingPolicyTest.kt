@@ -99,41 +99,6 @@ class PlayerSourceGroupingPolicyTest {
         assertEquals("provider-c", candidates[index!!].official?.line?.providerId)
     }
 
-    @Test fun failedLinePrefersSameProviderAndSkipsAlreadyTriedLines() {
-        val lines = listOf(
-            officialLine("failed", "provider-a", "Provider A", 0),
-            officialLine("already-tried", "provider-a", "Provider A", 1),
-            officialLine("other-provider", "provider-b", "Provider B", 2),
-            officialLine("same-provider", "provider-a", "Provider A", 3),
-        )
-
-        val index = VodSourceSelectionPolicy.selectFallbackIndex(
-            lines = lines,
-            currentIndex = 0,
-            triedIndices = setOf(0, 1),
-            preferredProviderGroupKey = VodSourceSelectionPolicy.providerGroupKey(lines[0]),
-        )
-
-        assertEquals(3, index)
-        assertEquals("same-provider", lines[index!!].official?.line?.playbackSourceId)
-    }
-
-    @Test fun failedLineFallsBackToAnotherProviderWhenSameProviderIsExhausted() {
-        val lines = listOf(
-            officialLine("failed", "provider-a", "Provider A", 0),
-            officialLine("other-provider", "provider-b", "Provider B", 1),
-        )
-
-        val index = VodSourceSelectionPolicy.selectFallbackIndex(
-            lines = lines,
-            currentIndex = 0,
-            triedIndices = setOf(0),
-            preferredProviderGroupKey = VodSourceSelectionPolicy.providerGroupKey(lines[0]),
-        )
-
-        assertEquals(1, index)
-    }
-
     private fun officialLine(
         playbackSourceId: String,
         providerId: String,

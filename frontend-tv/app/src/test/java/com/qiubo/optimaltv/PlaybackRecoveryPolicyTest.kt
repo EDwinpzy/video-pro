@@ -9,36 +9,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackRecoveryPolicyTest {
-    @Test fun `live recovery refreshes switches recreates and resets with a hard budget`() {
+    @Test fun `live recovery refreshes recreates and resets without changing source`() {
         val expected = listOf(
             RecoveryAction.REFRESH_CURRENT,
-            RecoveryAction.SWITCH_SOURCE,
             RecoveryAction.RECREATE_ENGINE,
             RecoveryAction.RESET_RUNTIME,
             RecoveryAction.GIVE_UP,
         )
-        assertEquals(expected, (0..4).map { PlaybackRecoveryPolicy.action(PlaybackKind.LIVE, it) })
+        assertEquals(expected, (0..3).map { PlaybackRecoveryPolicy.action(PlaybackKind.LIVE, it) })
     }
 
-    @Test fun `live line failure retries once then switches to an available source`() {
+    @Test fun `live line failure retries once on the same source then stops`() {
         assertEquals(
             RecoveryAction.REFRESH_CURRENT,
-            PlaybackRecoveryPolicy.liveLineFailureAction(retryCount = 0, hasAlternate = true),
+            PlaybackRecoveryPolicy.liveLineFailureAction(retryCount = 0),
         )
-        assertEquals(
-            RecoveryAction.SWITCH_SOURCE,
-            PlaybackRecoveryPolicy.liveLineFailureAction(retryCount = 1, hasAlternate = true),
-        )
-        assertEquals(
-            RecoveryAction.GIVE_UP,
-            PlaybackRecoveryPolicy.liveLineFailureAction(retryCount = 1, hasAlternate = false),
-        )
+        assertEquals(RecoveryAction.GIVE_UP, PlaybackRecoveryPolicy.liveLineFailureAction(retryCount = 1))
     }
 
-    @Test fun `vod recovery reloads then refreshes and keeps resume context`() {
+    @Test fun `vod recovery reloads refreshes and recreates the engine on the selected source`() {
         assertEquals(RecoveryAction.RELOAD_CURRENT, PlaybackRecoveryPolicy.action(PlaybackKind.VOD, 0))
         assertEquals(RecoveryAction.REFRESH_CURRENT, PlaybackRecoveryPolicy.action(PlaybackKind.VOD, 1))
-        assertEquals(RecoveryAction.SWITCH_SOURCE, PlaybackRecoveryPolicy.action(PlaybackKind.VOD, 2))
+        assertEquals(RecoveryAction.RECREATE_ENGINE, PlaybackRecoveryPolicy.action(PlaybackKind.VOD, 2))
+        assertEquals(RecoveryAction.GIVE_UP, PlaybackRecoveryPolicy.action(PlaybackKind.VOD, 3))
         assertEquals(118_000L, PlaybackRecoveryPolicy.resumePosition(120_000L))
         assertEquals(0L, PlaybackRecoveryPolicy.resumePosition(1_000L))
     }

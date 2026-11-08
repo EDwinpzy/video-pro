@@ -17,9 +17,9 @@ class LongPlaybackHealthPolicyTest {
     /** 与实现无关的期望值。改实现常量 → 这里红。 */
     private object Spec {
         const val PREP_BACKUP_MS = 3_500L
-        const val SWITCH_MS = 6_000L
+        const val SWITCH_MS = 25_000L
         const val DEGRADE_ENGINE_MS = 12_000L
-        const val HARD_TIMEOUT_MS = 20_000L
+        const val HARD_TIMEOUT_MS = 45_000L
         const val COOLDOWN_MIN_MS = 20_000L
         const val COOLDOWN_MAX_MS = 30_000L
         const val FREEZE_MS = 30_000L
@@ -67,8 +67,8 @@ class LongPlaybackHealthPolicyTest {
         assertEquals(LongPlaybackHealthPolicy.Action.PREP_BACKUP, at(Spec.PREP_BACKUP_MS))
         assertEquals(LongPlaybackHealthPolicy.Action.PREP_BACKUP, at(Spec.SWITCH_MS - 1))
         assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.SWITCH_MS))
-        assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.DEGRADE_ENGINE_MS - 1))
-        assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.DEGRADE_ENGINE_MS))
+        assertEquals(LongPlaybackHealthPolicy.Action.PREP_BACKUP, at(Spec.DEGRADE_ENGINE_MS - 1))
+        assertEquals(LongPlaybackHealthPolicy.Action.PREP_BACKUP, at(Spec.DEGRADE_ENGINE_MS))
         assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.HARD_TIMEOUT_MS - 1))
         assertEquals(LongPlaybackHealthPolicy.Action.GIVE_UP, at(Spec.HARD_TIMEOUT_MS))
     }
@@ -136,7 +136,7 @@ class LongPlaybackHealthPolicyTest {
             errorClass = PlaybackTelemetry.ErrorClass.NETWORK,
         )
         assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.SWITCH_MS))
-        assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.DEGRADE_ENGINE_MS))
+        assertEquals(LongPlaybackHealthPolicy.Action.PREP_BACKUP, at(Spec.DEGRADE_ENGINE_MS))
         assertEquals(LongPlaybackHealthPolicy.Action.SWITCH, at(Spec.HARD_TIMEOUT_MS - 1))
         assertEquals(LongPlaybackHealthPolicy.Action.GIVE_UP, at(Spec.HARD_TIMEOUT_MS))
     }

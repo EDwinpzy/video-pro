@@ -3,7 +3,12 @@
 package com.qiubo.optimaltv.playback
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
+import android.view.PixelCopy
+import android.view.SurfaceView
 import android.view.View
 import com.qiubo.optimaltv.R
 import kotlinx.coroutines.CoroutineScope
@@ -32,8 +37,11 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 
 enum class EnginePlayState { IDLE, BUFFERING, READY, ENDED, ERROR }
+
+private const val EPISODE_SWITCH_PRELOAD_US = 6_000_000L
 
 data class EngineUiState(
     val state: EnginePlayState = EnginePlayState.IDLE,
@@ -126,6 +134,8 @@ interface MediaEngine {
     /** Short dramas use a shallow startup reservoir so a preloaded adjacent episode paints
      *  quickly; their playlist items are already buffered ahead by enqueueNext/Previous. */
     fun setEpisodeSwitchBufferPreferred(on: Boolean) {}
+    /** Capture the currently presented video frame so a playlist switch can hide decoder black. */
+    fun captureCurrentFrame(onCaptured: (Bitmap?) -> Unit) = onCaptured(null)
     /**
      * 直播窗口提示（2026-09-16 长跑卡顿根治）：上层在起播前探测媒体清单的可播放窗口
      * 长度（毫秒）后传入，0 = 未知（沿用旧行为）。须在 prepare 前调用。
@@ -232,6 +242,7 @@ class Media3Engine(context: Context) : MediaEngine {
     override fun setEpisodeSwitchBufferPreferred(on: Boolean) {
         if (released.get() || episodeSwitchBuffer == on) return
         episodeSwitchBuffer = on
+        applyPreloadConfiguration(player)
         if (player != null) playerProfileRebuildPending = true
         com.qiubo.optimaltv.OtvLog.i("engine 切集缓冲档：${if (on) "短剧快速" else "标准"}")
     }
@@ -281,6 +292,25 @@ class Media3Engine(context: Context) : MediaEngine {
             playerProfileRebuildPending = false
         }
         return ensurePlayer()
+    }
+
+    /**
+     * Playlist preloading fills the sample queues of the next item while the current item is
+     * still playing. Keeping the current source busy always wins in Media3, so this only trades
+     * spare bandwidth for a much shorter codec/first-segment wait after an episode switch.
+     */
+    private fun applyPreloadConfiguration(target: ExoPlayer?) {
+        target ?: return
+        val configuration =
+            if (episodeSwitchBuffer) {
+                ExoPlayer.PreloadConfiguration(EPISODE_SWITCH_PRELOAD_US)
+            } else {
+                ExoPlayer.PreloadConfiguration.DEFAULT
+            }
+        runCatching { target.setPreloadConfiguration(configuration) }
+            .onFailure {
+                com.qiubo.optimaltv.OtvLog.w("engine 预加载配置失败: ${it.message}")
+            }
     }
 
     private fun supersedeMediaCallbacks(oldPlayer: ExoPlayer?) {
@@ -350,6 +380,37 @@ class Media3Engine(context: Context) : MediaEngine {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
             )
         }
+    }
+
+    override fun captureCurrentFrame(onCaptured: (Bitmap?) -> Unit) {
+        if (released.get()) {
+            onCaptured(null)
+            return
+        }
+        val surfaceView = renderViewAsPlayer().videoSurfaceView as? SurfaceView
+        if (surfaceView == null || surfaceView.width <= 0 || surfaceView.height <= 0 ||
+            !surfaceView.holder.surface.isValid
+        ) {
+            onCaptured(null)
+            return
+        }
+        val scale = (960f / surfaceView.width).coerceAtMost(1f)
+        val width = (surfaceView.width * scale).roundToInt().coerceAtLeast(1)
+        val height = (surfaceView.height * scale).roundToInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        PixelCopy.request(
+            surfaceView,
+            bitmap,
+            { result ->
+                if (result == PixelCopy.SUCCESS) {
+                    onCaptured(bitmap)
+                } else {
+                    bitmap.recycle()
+                    onCaptured(null)
+                }
+            },
+            Handler(Looper.getMainLooper()),
+        )
     }
 
     private fun mediaUrlAt(p: ExoPlayer, index: Int): String? {
@@ -541,7 +602,11 @@ class Media3Engine(context: Context) : MediaEngine {
         // 点播与足球直播（本地中继）维持 30s/120s。
         val (minBuf, maxBuf, startBuf, reBuf) =
             when {
-                episodeSwitchBuffer -> intArrayOf(10_000, 30_000, 250, 1_000).toList()
+                // Short dramas still need the normal 30s/120s reservoir and 6s re-buffer level.
+                // A 1s re-buffer level restarted playback after every tiny upstream gap, turning
+                // one network hiccup into a visible READY→BUFFERING loop. Only the first-frame
+                // threshold stays shallow; the preloaded playlist item is already ahead.
+                episodeSwitchBuffer -> intArrayOf(30_000, 120_000, 1_000, 4_000).toList()
                 // 小窗口直播（中继足球源 6s）：恢复水位必须小于窗口，否则一次抖动就要
                 // 等满整个窗口才出画（实测「转圈 8s 后触发整会话重解析」的大卡顿）
                 smallWindowLive() -> intArrayOf(8_000, 16_000, 600, 1_500).toList()
@@ -564,6 +629,7 @@ class Media3Engine(context: Context) : MediaEngine {
             .setSeekBackIncrementMs(30_000)
             .setSeekForwardIncrementMs(30_000)
             .build()
+        applyPreloadConfiguration(p)
         p.setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
