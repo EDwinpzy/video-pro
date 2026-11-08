@@ -482,6 +482,7 @@ class PlayerViewModel(
         const val HEALTH_HEALTHY_TICKS = 6
         private const val DANMAKU_REFRESH_MS = 4_000L
         private const val DANMAKU_RETRY_MS = 15_000L
+        private const val DANMAKU_STALE_RETRY_MS = 250L
         private val OFFICIAL_LINE_FALLBACK_CODES = setOf(
             "playback_line_url_missing",
             "playback_line_ticket_missing",
@@ -3821,7 +3822,6 @@ class PlayerViewModel(
                     if (result == null) {
                         _ui.value =
                             _ui.value.copy(
-                                danmakuAvailable = false,
                                 danmakuLoading = false,
                                 danmakuStatus = "弹幕加载失败",
                             )
@@ -3835,19 +3835,21 @@ class PlayerViewModel(
                             "official danmaku window stale fromMs=${result.fromMs} " +
                                 "toMs=${result.toMs} positionMs=$currentPositionMs",
                         )
+                        delay(DANMAKU_STALE_RETRY_MS)
                         continue
                     }
+                    val mergedItems =
+                        DanmakuWindowPolicy.mergeWindowItems(
+                            previous = _ui.value.danmakuItems,
+                            incoming = result.items,
+                            incomingFromMs = result.fromMs,
+                        )
                     _ui.value =
                         _ui.value.copy(
                             danmakuAvailable = result.available,
                             danmakuLoading = false,
                             danmakuStatus = result.status,
-                            danmakuItems =
-                                result.items
-                                    .distinctBy {
-                                        "${it.timeMs}|${it.sourceMode}|${it.content}"
-                                    }
-                                    .sortedBy(DanmakuItem::timeMs),
+                            danmakuItems = mergedItems,
                         )
                     delay(if (result.available) DANMAKU_REFRESH_MS else DANMAKU_RETRY_MS)
                 }

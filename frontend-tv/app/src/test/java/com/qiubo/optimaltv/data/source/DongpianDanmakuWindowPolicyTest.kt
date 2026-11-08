@@ -40,6 +40,45 @@ class DongpianDanmakuWindowPolicyTest {
         assertFalse(DanmakuWindowPolicy.covers(window, 540_001L))
     }
 
+    @Test
+    fun keepsRecentCommentsWhenTheNextSegmentStarts() {
+        val merged =
+            DanmakuWindowPolicy.mergeWindowItems(
+                previous =
+                    listOf(
+                        item(269_999L, "too-old"),
+                        item(290_000L, "still-on-screen"),
+                        item(299_000L, "boundary"),
+                        item(400_000L, "future-window"),
+                    ),
+                incoming =
+                    listOf(
+                        item(300_000L, "new-segment"),
+                        item(300_000L, "new-segment"),
+                    ),
+                incomingFromMs = 300_000L,
+            )
+
+        assertEquals(
+            listOf("still-on-screen", "boundary", "new-segment"),
+            merged.map(DanmakuItem::content),
+        )
+    }
+
+    @Test
+    fun keepsThePreviousWindowWhenTheNextLoadIsEmpty() {
+        val previous = listOf(item(299_000L, "boundary"))
+
+        assertEquals(
+            previous,
+            DanmakuWindowPolicy.mergeWindowItems(
+                previous = previous,
+                incoming = emptyList(),
+                incomingFromMs = 300_000L,
+            ),
+        )
+    }
+
     private fun segment(fromMs: Long, toMs: Long) =
         DanmakuSegmentSpec(
             fromMs = fromMs,
@@ -48,4 +87,16 @@ class DongpianDanmakuWindowPolicyTest {
             sha256 = "0".repeat(64),
             url = "bundle.json.gz",
         )
+
+    private fun item(
+        timeMs: Long,
+        content: String,
+    ) = DanmakuItem(
+        timeMs = timeMs,
+        sourceMode = 1,
+        color = 0xFFFFFF,
+        fontSize = 24,
+        content = content,
+        sourceId = content,
+    )
 }

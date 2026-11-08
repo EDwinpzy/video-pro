@@ -110,7 +110,6 @@ internal fun DanmakuOverlay(
     // S621 compositor never has to juggle two hardware surfaces during playback.
     surfaceRenderingEnabled: Boolean = false,
 ) {
-    if (items.isEmpty()) return
     if (surfaceRenderingEnabled && !LocalInspectionMode.current) {
         DanmakuSurfaceOverlay(
             items = items,

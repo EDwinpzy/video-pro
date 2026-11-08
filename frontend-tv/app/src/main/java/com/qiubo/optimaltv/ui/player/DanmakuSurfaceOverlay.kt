@@ -140,10 +140,11 @@ private class DanmakuSurfaceRenderer(
     private val holder: SurfaceHolder,
 ) {
     @Volatile private var latestFrame: DanmakuSurfaceFrame? = null
-    @Volatile private var latestFrameNanos = 0L
+    @Volatile private var needsWindowReset = true
     @Volatile private var viewportWidthPx = 0
     @Volatile private var viewportHeightPx = 0
 
+    private val playbackClock = DanmakuPlaybackClock()
     private var renderThread: HandlerThread? = null
     private var scheduleToken: Any? = null
     private var scheduleWidthPx = 0
@@ -164,8 +165,18 @@ private class DanmakuSurfaceRenderer(
     private var statsHardwareFrames = 0
 
     fun update(frame: DanmakuSurfaceFrame) {
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
+        if (
+            playbackClock.update(
+                positionMs = frame.positionMs,
+                realtimeMs = nowNanos / 1_000_000,
+                isPlaying = frame.isPlaying,
+                playbackRate = frame.playbackRate,
+            )
+        ) {
+            needsWindowReset = true
+        }
         latestFrame = frame
-        latestFrameNanos = SystemClock.elapsedRealtimeNanos()
     }
 
     fun resize(
@@ -215,6 +226,10 @@ private class DanmakuSurfaceRenderer(
 
         val drawStartedNanos = SystemClock.elapsedRealtimeNanos()
         ensureSchedule(frame, widthPx, heightPx)
+        if (needsWindowReset) {
+            activeWindow = DanmakuActiveWindow(schedule)
+            needsWindowReset = false
+        }
         val hardwareCanvas = runCatching { holder.lockHardwareCanvas() }.getOrNull()
         val canvas = hardwareCanvas ?: runCatching { holder.lockCanvas() }.getOrNull() ?: return
         var activeCount = 0
@@ -228,7 +243,11 @@ private class DanmakuSurfaceRenderer(
             val laneHeightPx = 34f * frame.density * normalizedFontScale
             val topInsetPx = 22f * frame.density
             val travelSpeedPxPerMs = widthPx * normalizedScrollSpeed / 6_500f
-            val frameClockMs = livePositionMs(frame)
+            val frameClockMs =
+                playbackClock.positionAt(
+                    realtimeMs = SystemClock.elapsedRealtimeNanos() / 1_000_000,
+                    playbackRate = frame.playbackRate,
+                )
             val active = activeWindow?.activeAt(frameClockMs) ?: return
             activeCount = active.size
             val cache = textBitmapCache ?: return
@@ -365,15 +384,6 @@ private class DanmakuSurfaceRenderer(
         scheduleWidthPx = widthPx
         scheduleHeightPx = heightPx
         scheduleToken = frame.scheduleToken
-    }
-
-    private fun livePositionMs(frame: DanmakuSurfaceFrame): Long {
-        if (!frame.isPlaying) return frame.positionMs
-        val elapsedMs =
-            ((SystemClock.elapsedRealtimeNanos() - latestFrameNanos).coerceAtLeast(0L) / 1_000_000.0 *
-                frame.playbackRate.coerceAtLeast(0.1f))
-                .toLong()
-        return frame.positionMs + elapsedMs.coerceAtLeast(0L)
     }
 
     private companion object {

@@ -322,9 +322,8 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
             }
             if (!ui.isLive &&
                 ui.danmakuEnabled &&
-                ui.danmakuAvailable &&
-                ui.danmakuItems.isNotEmpty() &&
-                ui.fatalMsg == null
+                ui.fatalMsg == null &&
+                (ui.danmakuLoading || ui.danmakuItems.isNotEmpty())
             ) {
                 DanmakuOverlay(
                     items = ui.danmakuItems,

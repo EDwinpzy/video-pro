@@ -168,6 +168,23 @@ internal object DanmakuWindowPolicy {
         window: DanmakuWindow,
         positionMs: Long,
     ): Boolean = window.toMs > window.fromMs && positionMs in window.fromMs until window.toMs
+
+    /**
+     * Keeps comments that started shortly before a new segment so they can finish scrolling
+     * across the segment boundary instead of vanishing when the window is replaced.
+     */
+    fun mergeWindowItems(
+        previous: List<DanmakuItem>,
+        incoming: List<DanmakuItem>,
+        incomingFromMs: Long,
+        keepBehindMs: Long = 30_000L,
+    ): List<DanmakuItem> {
+        if (incoming.isEmpty()) return previous
+        val cutoffMs = (incomingFromMs - keepBehindMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+        return (previous.filter { it.timeMs in cutoffMs until incomingFromMs } + incoming)
+            .distinctBy { "${it.timeMs}|${it.sourceMode}|${it.content}" }
+            .sortedBy(DanmakuItem::timeMs)
+    }
 }
 
 /**
@@ -265,7 +282,8 @@ class DongpianDanmakuClient internal constructor(
             segmentCache.clear()
         }
         cachedManifest?.takeIf { now < manifestExpiresAt }?.let { return it }
-        if (now < sourceRetryAt) return null
+        val cached = cachedManifest
+        if (now < sourceRetryAt) return cached
         val encoded = URLEncoder.encode(episodeId, "UTF-8").replace("+", "%20")
         val source =
             runCatching {
@@ -277,7 +295,7 @@ class DongpianDanmakuClient internal constructor(
                 OtvLog.w("official danmaku source failed type=${it.safeType()}")
                 lastStatus = "弹幕加载失败"
                 sourceRetryAt = now + FAILED_RETRY_MS
-            }.getOrNull() ?: return null
+            }.getOrNull() ?: return cached
 
         val status = source.optString("status").trim()
         val manifestUrl =
@@ -299,13 +317,26 @@ class DongpianDanmakuClient internal constructor(
                     ?.takeIf { it > 0L }
                     ?: DEFAULT_RETRY_MS
             sourceRetryAt = now + retryMs.coerceIn(MIN_RETRY_MS, MAX_RETRY_MS)
-            return null
+            return cached.takeIf { status == "generating" }
         }
 
         val resolvedUrl = resolveHttpsUrl(manifestUrl)
-        val manifestBytes = download(resolvedUrl, MAX_MANIFEST_BYTES)
-        val manifestJson = JSONObject(String(decodeGzipIfNeeded(manifestBytes), StandardCharsets.UTF_8))
-        val manifest = DongpianDanmakuParser.parseManifest(manifestJson, resolvedUrl)
+        val manifest =
+            try {
+                val manifestBytes = download(resolvedUrl, MAX_MANIFEST_BYTES)
+                val manifestJson =
+                    JSONObject(
+                        String(decodeGzipIfNeeded(manifestBytes), StandardCharsets.UTF_8),
+                    )
+                DongpianDanmakuParser.parseManifest(manifestJson, resolvedUrl)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                OtvLog.w("official danmaku manifest failed type=${error.safeType()}")
+                lastStatus = "弹幕加载失败"
+                sourceRetryAt = now + FAILED_RETRY_MS
+                return cached
+            }
         cachedManifest = manifest
         manifestUrlOrigin = resolvedUrl
         manifestExpiresAt = now + MANIFEST_CACHE_MS
