@@ -11,14 +11,12 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
@@ -68,45 +66,27 @@ internal fun HomeRecommendationRow(
     scale: Float,
     rowState: LazyListState,
     firstCardFocus: FocusRequester? = null,
+    columnFocusRequesters: MutableMap<Int, FocusRequester>? = null,
     rows: Int = 1,
     loading: Boolean = false,
-    onDownFromLastRow: (() -> Boolean)? = null,
-    onUpFromTopRow: (() -> Boolean)? = null,
+    onDownFromLastRow: ((Int) -> Boolean)? = null,
+    onUpFromTopRow: ((Int) -> Boolean)? = null,
 ) {
     val context = LocalContext.current
     val posterSize = remember(context.resources.displayMetrics.widthPixels) {
         TvImageRequestSpec.posterSize(context.resources.displayMetrics.widthPixels)
     }
     val columns = remember(entries, rows) { recommendationColumns(entries, rows) }
-    var focusedRow by remember { mutableIntStateOf(0) }
-    var focusedColumn by remember { mutableIntStateOf(0) }
+    val focusedRow = remember { intArrayOf(0) }
+    val focusedColumn = remember { intArrayOf(0) }
+    val currentOnDownFromLastRow by rememberUpdatedState(onDownFromLastRow)
+    val currentOnUpFromTopRow by rememberUpdatedState(onUpFromTopRow)
     val directionKeys = remember { TvDirectionKeyHandler() }
     val revealScope = rememberCoroutineScope()
     val activeRevealJob = remember { arrayOfNulls<Job>(1) }
     Column(
         Modifier
             .fillMaxWidth()
-            .onPreviewKeyEvent { event ->
-                if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                    activeRevealJob[0]?.cancel()
-                }
-                directionKeys.handle(
-                    keyCode = event.nativeKeyEvent.keyCode,
-                    action = event.nativeKeyEvent.action,
-                    onDirection = { direction ->
-                        when (direction) {
-                            NAV_DOWN -> {
-                                val lastRow =
-                                    columns.getOrNull(focusedColumn)?.lastIndex ?: 0
-                                focusedRow >= lastRow &&
-                                    onDownFromLastRow?.invoke() == true
-                            }
-                            NAV_UP -> focusedRow == 0 && onUpFromTopRow?.invoke() == true
-                            else -> false
-                        }
-                    },
-                )
-            }
             .padding(bottom = 20f.sx(scale)),
     ) {
         if (entries.isEmpty()) {
@@ -138,8 +118,8 @@ internal fun HomeRecommendationRow(
                                     modifier = Modifier
                                         .onFocusChanged {
                                             if (it.isFocused) {
-                                                focusedRow = rowIndex
-                                                focusedColumn = columnIndex
+                                                focusedRow[0] = rowIndex
+                                                focusedColumn[0] = columnIndex
                                                 activeRevealJob[0]?.cancel()
                                                 activeRevealJob[0] =
                                                     revealScope.launch { cardReveal.bringIntoView() }
@@ -149,11 +129,41 @@ internal fun HomeRecommendationRow(
                                             scaleFocused = CARD_FOCUS_SCALE,
                                             allowFocusScaleOnConstrained = true,
                                             focusHandle =
-                                                firstCardFocus.takeIf {
-                                                    columnIndex == 0 && rowIndex == 0
-                                                },
+                                                columnFocusRequesters
+                                                    ?.takeIf { rowIndex == 0 }
+                                                    ?.getOrPut(columnIndex) { FocusRequester() }
+                                                    ?: firstCardFocus.takeIf {
+                                                        columnIndex == 0 && rowIndex == 0
+                                                    },
                                             onClick = {
                                                 nav.navigate("detail/" + URLEncoder.encode(entry.id, "UTF-8"))
+                                            },
+                                            keyOverride = keyOverride@{ event ->
+                                                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                                                    activeRevealJob[0]?.cancel()
+                                                }
+                                                return@keyOverride directionKeys.handle(
+                                                    keyCode = event.keyCode,
+                                                    action = event.action,
+                                                    onDirection = { direction ->
+                                                        when (direction) {
+                                                            NAV_DOWN -> {
+                                                                val lastRow =
+                                                                    columns
+                                                                        .getOrNull(focusedColumn[0])
+                                                                        ?.lastIndex ?: 0
+                                                                focusedRow[0] >= lastRow &&
+                                                                    currentOnDownFromLastRow
+                                                                        ?.invoke(focusedColumn[0]) == true
+                                                            }
+                                                            NAV_UP ->
+                                                                focusedRow[0] == 0 &&
+                                                                    currentOnUpFromTopRow
+                                                                        ?.invoke(focusedColumn[0]) == true
+                                                            else -> false
+                                                        }
+                                                    },
+                                                )
                                             },
                                         )
                                         .fillMaxWidth().height(348f.sx(scale)).background(OtvColors.Bg),

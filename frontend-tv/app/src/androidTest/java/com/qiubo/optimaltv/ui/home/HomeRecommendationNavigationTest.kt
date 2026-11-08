@@ -76,7 +76,7 @@ class HomeRecommendationNavigationTest {
                                 rowState = rowState,
                                 firstCardFocus = firstCardFocus,
                                 rows = 1,
-                                onDownFromLastRow = {
+                                onDownFromLastRow = { _ ->
                                     downCalls.incrementAndGet()
                                     true
                                 },
@@ -133,7 +133,7 @@ class HomeRecommendationNavigationTest {
                             rowState = firstRowState,
                             firstCardFocus = firstCardFocus,
                             rows = 1,
-                            onDownFromLastRow = {
+                            onDownFromLastRow = { _ ->
                                 moveStarted.set(true)
                                 scope.launch {
                                     try {
@@ -209,6 +209,106 @@ class HomeRecommendationNavigationTest {
                 "viewportBottom=$viewportBottom",
             secondSectionBounds.top >= 0f &&
                 secondSectionBounds.bottom <= viewportBottom,
+        )
+    }
+
+    @Test
+    fun rightInsideSecondSectionDoesNotInvokeNeighbouringSectionCallbacks() {
+        val firstCardFocus = FocusRequester()
+        val secondCardFocus = FocusRequester()
+        val sectionMoves = AtomicInteger()
+        val focusSecond = AtomicBoolean(false)
+        val listState = AtomicReference<androidx.compose.foundation.lazy.LazyListState>()
+        Harness.nativeFocus = true
+        Harness.scene = {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                val nav = rememberNavController()
+                val outerListState = rememberLazyListState()
+                val firstRowState = rememberLazyListState()
+                val secondRowState = rememberLazyListState()
+                val scope = rememberCoroutineScope()
+                val scale = rememberUiScale()
+                SideEffect { listState.set(outerListState) }
+                LazyColumn(state = outerListState, modifier = Modifier.fillMaxSize()) {
+                    item(key = "hero") {
+                        Spacer(Modifier.height((500f * scale).dp))
+                    }
+                    item(key = "recommendations-header:0") {
+                        HomeRecommendationHeader(title = "大家都在看", scale = scale)
+                    }
+                    item(key = "recommendations-row:0") {
+                        HomeRecommendationRow(
+                            nav = nav,
+                            entries = testEntries("第一区"),
+                            scale = scale,
+                            rowState = firstRowState,
+                            firstCardFocus = firstCardFocus,
+                            rows = 1,
+                            onDownFromLastRow = { _ ->
+                                if (!focusSecond.get()) return@HomeRecommendationRow false
+                                sectionMoves.incrementAndGet()
+                                scope.launch {
+                                    focusHomeSection(
+                                        listState = outerListState,
+                                        targetIndex = 1,
+                                        firstCardFocus = secondCardFocus,
+                                    )
+                                }
+                                true
+                            },
+                            onUpFromTopRow = { _ -> sectionMoves.incrementAndGet(); true },
+                        )
+                    }
+                    item(key = "recommendations-header:1") {
+                        HomeRecommendationHeader(title = "最近热门", scale = scale)
+                    }
+                    item(key = "recommendations-row:1") {
+                        Box(Modifier.testTag("second-section")) {
+                            HomeRecommendationRow(
+                                nav = nav,
+                                entries = testEntries("第二区"),
+                                scale = scale,
+                                rowState = secondRowState,
+                                firstCardFocus = secondCardFocus,
+                                rows = 1,
+                                onDownFromLastRow = { _ -> sectionMoves.incrementAndGet(); true },
+                                onUpFromTopRow = { _ -> sectionMoves.incrementAndGet(); true },
+                            )
+                        }
+                    }
+                    item(key = "tail") {
+                        Spacer(Modifier.height(300.dp))
+                    }
+                }
+                InitialFocusEffect(firstCardFocus, "recommendation-card")
+            }
+        }
+        rule.waitForIdle()
+        rule.waitUntil(5_000) { rule.activity.hasWindowFocus() }
+        rule.waitUntil(5_000) {
+            rule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        focusSecond.set(true)
+        androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation()
+            .sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_DOWN)
+        rule.waitUntil(5_000) { sectionMoves.get() == 1 }
+        androidx.test.platform.app.InstrumentationRegistry
+            .getInstrumentation()
+            .sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_RIGHT)
+        rule.waitForIdle()
+
+        val secondSectionBounds =
+            rule.onNodeWithTag("second-section").fetchSemanticsNode().boundsInRoot
+        val focusedBounds =
+            rule.onAllNodes(isFocused()).fetchSemanticsNodes().single().boundsInRoot
+        assertEquals(1, sectionMoves.get())
+        assertTrue(listState.get().firstVisibleItemIndex > 0)
+        assertTrue(
+            "focus should stay inside the second section: focused=$focusedBounds " +
+                "section=$secondSectionBounds",
+            secondSectionBounds.contains(focusedBounds.center),
         )
     }
 

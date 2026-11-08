@@ -252,6 +252,8 @@ fun Modifier.dpadFocusable(
     navGroup: String? = null,
     /** 节点级方向语义覆盖：返回 true = 已处理（消费），false = 落回几何搜索 */
     navOverride: ((Int) -> Boolean)? = null,
+    /** Explicit key override for the focused node; does not enable the legacy registry. */
+    keyOverride: ((android.view.KeyEvent) -> Boolean)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
     val regionOverride = LocalNavOverride.current
@@ -271,6 +273,12 @@ fun Modifier.dpadFocusable(
         } else {
             scaleFocused
         }
+    val keyOverrideModifier =
+        keyOverride?.let { handler ->
+            Modifier.onPreviewKeyEvent { event ->
+                handler(event.nativeKeyEvent)
+            }
+        } ?: Modifier
 
     if (TvPerformanceProfile.isConstrained && !needsLegacyFocusRegistry) {
         val resolvedFocusRequester =
@@ -291,6 +299,7 @@ fun Modifier.dpadFocusable(
             .onGloballyPositioned { coordinates ->
                 focusTop[0] = coordinates.positionInWindow().y
             }
+            .then(keyOverrideModifier)
             .onFocusEvent { event ->
                 focused = event.isFocused
                 OtvNav.onNativeFocusEvent(
@@ -400,6 +409,7 @@ fun Modifier.dpadFocusable(
     }
 
     this
+        .then(keyOverrideModifier)
         .onGloballyPositioned {
             // stamp 与 launchScrollThenRetry 的 stepStamp 同用 uptimeMillis 时钟：
             // 曾混用 currentTimeMillis（墙钟 ~1e12 恒大于 uptime ~1e9）导致
