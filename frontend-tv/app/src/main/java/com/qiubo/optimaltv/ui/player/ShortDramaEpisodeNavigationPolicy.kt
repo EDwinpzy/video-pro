@@ -51,6 +51,20 @@ internal object ShortDramaEpisodeNavigationPolicy {
         return target.takeIf { it in 0 until episodeCount }
     }
 
+    /**
+     * A second seek before the first frame arrives makes Media3 discard its retained frame and
+     * shows black. Keep only the latest adjacent request and run it after the first frame.
+     */
+    fun shouldDeferUntilFirstFrame(
+        seamlessSwitchInFlight: Boolean,
+        firstFrameRendered: Boolean,
+        requestedEpisode: Int,
+        currentEpisode: Int,
+    ): Boolean =
+        seamlessSwitchInFlight &&
+            !firstFrameRendered &&
+            (requestedEpisode == currentEpisode - 1 || requestedEpisode == currentEpisode + 1)
+
     private fun isShortDramaCategory(categoryId: String): Boolean {
         val category = categoryId.trim().substringAfterLast(':').lowercase()
         return category == "short" ||

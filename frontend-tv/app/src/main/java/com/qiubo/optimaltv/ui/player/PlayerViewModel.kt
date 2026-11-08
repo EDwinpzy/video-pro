@@ -561,6 +561,8 @@ class PlayerViewModel(
     private var preloadedPrevious: PreloadedEpisode? = null
     private var preloadAttemptedNextEpisode = -1
     private var preloadAttemptedPreviousEpisode = -1
+    /** Latest adjacent request while the previous item has not produced its first frame yet. */
+    private var deferredAdjacentEpisodeTarget: Int? = null
     private var observedMediaSequence = 0
     private var skipIntroApplied = false
     private var stallJob: Job? = null
@@ -1133,6 +1135,15 @@ class PlayerViewModel(
                             !st.firstFrameRendered &&
                             st.state != EnginePlayState.ERROR,
                 )
+                if (st.firstFrameRendered) {
+                    deferredAdjacentEpisodeTarget?.let { target ->
+                        deferredAdjacentEpisodeTarget = null
+                        if (target != _ui.value.epIndex && target in 0 until _ui.value.epCount) {
+                            OtvLog.i("首帧已出，继续处理快速切集请求 ep=${target + 1}")
+                            viewModelScope.launch { switchEpisode(target) }
+                        }
+                    }
+                }
                 maybeApplyIntroSkip(st)
                 when {
                     PlaybackRecoveryCoordinationPolicy.endedBeforeVodStarted(
@@ -1229,16 +1240,7 @@ class PlayerViewModel(
         if (ui.isLive || ui.isMovie || ui.fatalMsg != null || ui.sourceResolving) return
         if (hostInBackground || !hasEngine() || !engine.supportsSeamlessNext) return
         if (st.state != EnginePlayState.READY || !st.isPlaying || st.durationMs <= 0L) return
-        val shortDrama = ShortDramaEpisodeNavigationPolicy.isShortDrama(
-            categoryIds = listOf(
-                ui.categoryId,
-                currentItem?.categoryId.orEmpty(),
-                repo.itemById(vodId)?.categoryId.orEmpty(),
-            ),
-            metadata = listOf(ui.title, ui.meta).joinToString(" "),
-            episodeCount = ui.epCount,
-            durationMs = st.durationMs,
-        )
+        val shortDrama = isCurrentShortDrama(durationMs = st.durationMs)
         val next = AutoPlayPolicy.nextEpisodeIndex(
             isLive = ui.isLive,
             isMovie = ui.isMovie,
@@ -1268,6 +1270,18 @@ class PlayerViewModel(
         ) return
         startEpisodePreload(next, direction = 1)
     }
+
+    private fun isCurrentShortDrama(durationMs: Long = _ui.value.durationMs): Boolean =
+        ShortDramaEpisodeNavigationPolicy.isShortDrama(
+            categoryIds = listOf(
+                _ui.value.categoryId,
+                currentItem?.categoryId.orEmpty(),
+                repo.itemById(vodId)?.categoryId.orEmpty(),
+            ),
+            metadata = listOf(_ui.value.title, _ui.value.meta).joinToString(" "),
+            episodeCount = _ui.value.epCount,
+            durationMs = durationMs,
+        )
 
     private fun maybeAdvanceForOutro(st: com.qiubo.optimaltv.playback.EngineUiState) {
         val ui = _ui.value
@@ -2020,6 +2034,9 @@ class PlayerViewModel(
         _ui.value = _ui.value.copy(firstFrameRendered = false)
         awaitingPrepare = true
         try {
+            if (isVod) {
+                sessionEngine.setEpisodeSwitchBufferPreferred(isCurrentShortDrama())
+            }
             sessionEngine.prepare(
                 PrepareRequest(
                     url = playUrl,
@@ -4073,6 +4090,20 @@ class PlayerViewModel(
     fun switchEpisode(ep: Int) {
         val cur = _ui.value
         if (ep !in 0 until cur.epCount || ep == cur.epIndex || cur.isLive) return
+        if (cur.seamlessEpisodeSwitch && !cur.firstFrameRendered) {
+            if (ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
+                    seamlessSwitchInFlight = cur.seamlessEpisodeSwitch,
+                    firstFrameRendered = cur.firstFrameRendered,
+                    requestedEpisode = ep,
+                    currentEpisode = cur.epIndex,
+                )
+            ) {
+                deferredAdjacentEpisodeTarget = ep
+                OtvLog.i("切集首帧未出，合并快速切集请求 ep=${ep + 1}")
+            }
+            return
+        }
+        deferredAdjacentEpisodeTarget = null
         if (trySeamlessAdjacentEpisode(ep, cur)) return
         val selectedItem = currentItem ?: return
         val selectedEpisode = selectedItem.episodes.getOrNull(ep) ?: return

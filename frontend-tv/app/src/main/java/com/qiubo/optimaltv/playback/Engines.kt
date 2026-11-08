@@ -123,6 +123,9 @@ interface MediaEngine {
     /** v1.17 IPTV 大缓冲档（用户需求：美国/英国等远端源卡顿）——加大 min/max 缓冲
      *  平滑抖动；默认关闭（足球直播走本地中继无需）。须在首次 prepare 前设置。 */
     fun setLargeBufferPreferred(on: Boolean) {}
+    /** Short dramas use a shallow startup reservoir so a preloaded adjacent episode paints
+     *  quickly; their playlist items are already buffered ahead by enqueueNext/Previous. */
+    fun setEpisodeSwitchBufferPreferred(on: Boolean) {}
     /**
      * 直播窗口提示（2026-09-16 长跑卡顿根治）：上层在起播前探测媒体清单的可播放窗口
      * 长度（毫秒）后传入，0 = 未知（沿用旧行为）。须在 prepare 前调用。
@@ -205,6 +208,9 @@ class Media3Engine(context: Context) : MediaEngine {
     @Volatile private var softwarePreferred = false
     /** v1.17 IPTV 大缓冲档：ensurePlayer 按 this 标记选 LoadControl 参数 */
     @Volatile private var largeBuffer = false
+    /** Adjacent short-drama episodes need a shallow startup reservoir to avoid a long blank
+     *  interval while switching to an already-prebuffered playlist item. */
+    @Volatile private var episodeSwitchBuffer = false
     /** 直播窗口长度提示（0 = 未知）：见 MediaEngine.setLiveWindowHintMs */
     @Volatile private var liveWindowHintMs = 0L
     /** Rejects callbacks from a media item superseded by prepare, swap, rebuild, or release. */
@@ -221,6 +227,13 @@ class Media3Engine(context: Context) : MediaEngine {
     override fun setLargeBufferPreferred(on: Boolean) {
         if (released.get()) return
         largeBuffer = on
+    }
+
+    override fun setEpisodeSwitchBufferPreferred(on: Boolean) {
+        if (released.get() || episodeSwitchBuffer == on) return
+        episodeSwitchBuffer = on
+        if (player != null) playerProfileRebuildPending = true
+        com.qiubo.optimaltv.OtvLog.i("engine 切集缓冲档：${if (on) "短剧快速" else "标准"}")
     }
 
     /** 小窗口直播（足球直播中继：3×2s＝6s）：必须换掉固定的 15s 目标延迟与 6s 恢复水位 */
@@ -327,6 +340,11 @@ class Media3Engine(context: Context) : MediaEngine {
             isFocusableInTouchMode = false
             descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
             importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            // Adjacent-episode switches use one playlist and one surface. Keep the last decoded
+            // frame visible while the next item re-buffers instead of covering it with the
+            // default black shutter.
+            setKeepContentOnPlayerReset(true)
+            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -523,6 +541,7 @@ class Media3Engine(context: Context) : MediaEngine {
         // 点播与足球直播（本地中继）维持 30s/120s。
         val (minBuf, maxBuf, startBuf, reBuf) =
             when {
+                episodeSwitchBuffer -> intArrayOf(10_000, 30_000, 250, 1_000).toList()
                 // 小窗口直播（中继足球源 6s）：恢复水位必须小于窗口，否则一次抖动就要
                 // 等满整个窗口才出画（实测「转圈 8s 后触发整会话重解析」的大卡顿）
                 smallWindowLive() -> intArrayOf(8_000, 16_000, 600, 1_500).toList()

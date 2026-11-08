@@ -130,6 +130,50 @@ class ShortDramaEpisodeNavigationPolicyTest {
     }
 
     @Test
+    fun anAdjacentRequestWaitsForTheInFlightSwitchToPaint() {
+        assertTrue(
+            ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
+                seamlessSwitchInFlight = true,
+                firstFrameRendered = false,
+                requestedEpisode = 4,
+                currentEpisode = 5,
+            ),
+        )
+        assertTrue(
+            ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
+                seamlessSwitchInFlight = true,
+                firstFrameRendered = false,
+                requestedEpisode = 6,
+                currentEpisode = 5,
+            ),
+        )
+        assertFalse(
+            ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
+                seamlessSwitchInFlight = true,
+                firstFrameRendered = true,
+                requestedEpisode = 6,
+                currentEpisode = 5,
+            ),
+        )
+        assertFalse(
+            ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
+                seamlessSwitchInFlight = false,
+                firstFrameRendered = false,
+                requestedEpisode = 6,
+                currentEpisode = 5,
+            ),
+        )
+        assertFalse(
+            ShortDramaEpisodeNavigationPolicy.shouldDeferUntilFirstFrame(
+                seamlessSwitchInFlight = true,
+                firstFrameRendered = false,
+                requestedEpisode = 8,
+                currentEpisode = 5,
+            ),
+        )
+    }
+
+    @Test
     fun listDialogAndOtherMediaEventsAreLeftUntouched() {
         val handler = ShortDramaEpisodeKeyHandler()
 
