@@ -1,7 +1,7 @@
 # Architecture
 
 > **Production boundary (2026-11-05):** The official TV application is the
-> standalone [`frontend-tv`](../frontend-tv) project (`0.3.1`, `versionCode 7`).
+> standalone [`frontend-tv`](../frontend-tv) project (`0.3.2`, `versionCode 8`).
 > The KMP module graph below describes inherited upstream and experimental
 > migration code; it is not the release source. See
 > [Repository layout and release authority](repository-layout.md).

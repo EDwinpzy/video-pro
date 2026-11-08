@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.3.2 (Video Pro TV)
+
+- Stabilize D-pad focus in recommendation rows below the first section so lower rows no longer trigger neighbouring section navigation or lose the current column.
+- Keep the focused card's column when moving between recommendation sections.
+- Preserve the constrained-device native-focus fast path while handling explicit cross-section key actions.
+- Add a two-section focus regression test for rightward movement after a section transition.
+
 ## 0.3.1 (Video Pro TV)
 
 - Restore the complete legacy-oriented TV frontend as the authoritative Video Pro application after the experimental KMP shell.
