@@ -1,8 +1,8 @@
 # Repository layout and release authority
 
 This page is the authoritative map for the whole repository. The current TV
-release is [`frontend-tv`](../frontend-tv), version `0.3.1`
-(`versionCode 7`), with package ID `com.dongpiandi.videopro`.
+release is [`frontend-tv`](../frontend-tv), version `0.3.2`
+(`versionCode 8`), with package ID `com.dongpiandi.videopro`.
 
 ## Release boundary
 

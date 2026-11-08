@@ -209,9 +209,9 @@ private fun CategoryVodScreen(
         remember(categoryKey) {
             List(sectionTitles.size) { createTvLazyListState() }
         }
-    val sectionFocusRequesters =
+    val sectionCardFocusRequesters =
         remember(categoryKey) {
-            List(sectionTitles.size) { FocusRequester() }
+            List(sectionTitles.size) { mutableMapOf<Int, FocusRequester>() }
         }
     val heroesTop = remember(categorySections) { HomeHeroPolicy.forCategory(categorySections) }
     val categoryLabel =
@@ -283,6 +283,7 @@ private fun CategoryVodScreen(
         }
     }
     val sectionMoveInFlight = remember { booleanArrayOf(false) }
+    val sectionFocusedColumn = remember(categoryKey) { IntArray(sectionTitles.size) }
     fun sectionEntries(index: Int): List<VodItem> =
         categorySections.firstOrNull { it.name == sectionTitles.getOrNull(index) }?.items.orEmpty()
     fun focusSection(targetIndex: Int) {
@@ -292,18 +293,21 @@ private fun CategoryVodScreen(
                 focusHomeSection(
                     listState = vodListState,
                     targetIndex = targetIndex,
-                    firstCardFocus = sectionFocusRequesters[targetIndex],
+                    firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(
+                        sectionFocusedColumn[targetIndex],
+                    ) { FocusRequester() },
                 )
             } finally {
                 sectionMoveInFlight[0] = false
             }
         }
     }
-    fun moveSection(fromIndex: Int, step: Int): Boolean {
+    fun moveSection(fromIndex: Int, step: Int, column: Int = 0): Boolean {
         if (sectionMoveInFlight[0]) return true
         var target = fromIndex + step
         while (target in sectionTitles.indices) {
             if (sectionEntries(target).isNotEmpty()) {
+                sectionFocusedColumn[target] = column
                 sectionMoveInFlight[0] = true
                 focusSection(target)
                 return true
@@ -375,7 +379,7 @@ private fun CategoryVodScreen(
                         entries = entries,
                         scale = s,
                         rowState = sectionRowStates[index],
-                        firstCardFocus = sectionFocusRequesters[index],
+                        columnFocusRequesters = sectionCardFocusRequesters[index],
                         rows =
                             if (index == 0 && !com.qiubo.optimaltv.TvPerformanceProfile.isConstrained) {
                                 2
@@ -383,8 +387,8 @@ private fun CategoryVodScreen(
                                 1
                             },
                         loading = categorySections.none { it.name == title },
-                        onDownFromLastRow = { moveSection(index, 1) },
-                        onUpFromTopRow = { moveSection(index, -1) },
+                        onDownFromLastRow = { column -> moveSection(index, 1, column) },
+                        onUpFromTopRow = { column -> moveSection(index, -1, column) },
                     )
                 }
             }

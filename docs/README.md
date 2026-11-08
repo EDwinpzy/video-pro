@@ -2,7 +2,7 @@
 
 Start with the root [`README.md`](../README.md) for the product overview and
 the official build entry point. The current TV release is
-[`frontend-tv`](../frontend-tv), version `0.3.1` (`versionCode 7`). The root
+[`frontend-tv`](../frontend-tv), version `0.3.2` (`versionCode 8`). The root
 KMP `app-tv` and `design-tv` implementation is experimental and is not a
 release target.
 
