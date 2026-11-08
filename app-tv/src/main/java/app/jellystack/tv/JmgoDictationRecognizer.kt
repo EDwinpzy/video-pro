@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import dalvik.system.PathClassLoader
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.lang.reflect.Proxy
@@ -20,7 +21,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
-import org.json.JSONObject
 
 /**
  * Uses only the installed JMGO iFlytek AIUI recognition engine. It never invokes the vendor
@@ -319,12 +319,14 @@ internal class JmgoDictationRecognizer(
                 val loader = PathClassLoader(vendor.sourceDir, vendor.nativeLibraryDir, context.classLoader)
                 val setting = loader.loadClass("com.iflytek.aiui.AIUISetting")
                 val aiuiDirectory = File(context.filesDir, "jmgo-dictation").apply { mkdirs() }
-                setting.getMethod("setAIUIDir", String::class.java)
+                setting
+                    .getMethod("setAIUIDir", String::class.java)
                     .invoke(null, aiuiDirectory.absolutePath + File.separator)
                 setting.getMethod("setSaveDataLog", Boolean::class.javaPrimitiveType).invoke(null, false)
                 setting.getMethod("setShowLog", Boolean::class.javaPrimitiveType).invoke(null, false)
                 val serial = readVendorSerial(loader, vendorContext)
-                setting.getMethod("setSystemInfo", String::class.java, String::class.java)
+                setting
+                    .getMethod("setSystemInfo", String::class.java, String::class.java)
                     .invoke(null, "sn", serial)
 
                 val config =
@@ -374,9 +376,11 @@ internal class JmgoDictationRecognizer(
                     managerClass
                         .getMethod("getInstance", Context::class.java)
                         .invoke(null, vendorContext)
-                return (managerClass.getMethod("getString", Int::class.javaPrimitiveType)
-                    .invoke(manager, VENDOR_SERIAL_KEY) as? String)
-                    ?.trim()
+                return (
+                    managerClass
+                        .getMethod("getString", Int::class.javaPrimitiveType)
+                        .invoke(manager, VENDOR_SERIAL_KEY) as? String
+                )?.trim()
                     ?.takeIf(String::isNotEmpty)
                     ?: error("Vendor serial number unavailable")
             }
@@ -389,7 +393,9 @@ internal class JmgoDictationRecognizer(
         @Volatile
         var eventSink: ((Any) -> Unit)? = null
 
-        private val readySeen = java.util.concurrent.atomic.AtomicBoolean(false)
+        private val readySeen =
+            java.util.concurrent.atomic
+                .AtomicBoolean(false)
 
         fun onEvent(event: Any) {
             when (event.javaClass.getField("eventType").getInt(event)) {

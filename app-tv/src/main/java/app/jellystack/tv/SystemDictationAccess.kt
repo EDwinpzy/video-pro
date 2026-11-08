@@ -9,7 +9,8 @@ import android.view.accessibility.AccessibilityManager
 internal object SystemDictationAccess {
     fun isEnabled(context: Context): Boolean {
         val manager = context.getSystemService(AccessibilityManager::class.java) ?: return false
-        return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        return manager
+            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { enabled ->
                 val service = enabled.resolveInfo.serviceInfo
                 service.packageName == context.packageName &&

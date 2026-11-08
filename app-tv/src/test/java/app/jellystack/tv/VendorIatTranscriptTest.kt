@@ -50,9 +50,7 @@ class VendorIatTranscriptTest {
         assertNull(transcript.accept("""{"text":{"sn":0}}"""))
     }
 
-    private fun packet(
-        vararg values: Pair<String, Any>,
-    ): String {
+    private fun packet(vararg values: Pair<String, Any>): String {
         val sequence = values.first { it.first == "sn" }.second
         val word = values.first { it.first == "w" }.second
         return """{"text":{"sn":$sequence,"ws":[{"cw":[{"w":"$word"}]}]}}"""

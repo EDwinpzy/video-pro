@@ -1,7 +1,7 @@
 package app.jellystack.tv
 
-import java.util.TreeMap
 import org.json.JSONObject
+import java.util.TreeMap
 
 /** Collects iFlytek AIUI IAT packets, including WPGS replacement ranges. */
 internal class VendorIatTranscript {
