@@ -12,6 +12,11 @@ internal enum class TvPerformanceTier {
 internal object TvPerformancePolicy {
     private const val CONSTRAINED_HEAP_MB = 192
     private const val CONSTRAINED_CPU_COUNT = 2
+    private val SEMANTICS_SUPPRESSING_ACCESSIBILITY_PACKAGES =
+        listOf(
+            "com.jmgo.",
+            "com.dongpiandi.voicehelper",
+        )
 
     fun tier(
         maxHeapMb: Int,
@@ -38,6 +43,34 @@ internal object TvPerformancePolicy {
 
     fun navigationMotionEnabled(tier: TvPerformanceTier): Boolean =
         tier == TvPerformanceTier.BALANCED
+
+    /**
+     * Vendor scanners and our voice helper consume key/window events only. They do not
+     * inspect Compose semantics, but their accessibility subscriptions force Compose to
+     * build the full semantic tree after every player or sidebar update. Suppress that
+     * export on constrained devices unless a real screen reader is enabled.
+     */
+    fun suppressFocusSemantics(
+        constrained: Boolean,
+        enabledServices: String,
+    ): Boolean {
+        if (!constrained) return false
+        val packages =
+            enabledServices.split(':')
+                .map { it.substringBefore('/').trim() }
+                .filter { it.isNotEmpty() }
+        val vendorScanner =
+            packages.any { pkg ->
+                SEMANTICS_SUPPRESSING_ACCESSIBILITY_PACKAGES.any(pkg::startsWith)
+            }
+        val screenReader =
+            packages.any {
+                it == "com.google.android.marvin.talkback" ||
+                    it == "com.android.talkback" ||
+                    it.contains("screenreader", ignoreCase = true)
+            }
+        return vendorScanner && !screenReader
+    }
 }
 
 /**
@@ -49,7 +82,6 @@ internal object TvPerformancePolicy {
  */
 internal object TvPerformanceProfile {
     private const val BYTES_PER_MB = 1024L * 1024L
-    private const val VENDOR_ACCESSIBILITY_PREFIX = "com.jmgo."
 
     private val tier: TvPerformanceTier by lazy {
         val lowRamDevice = runCatching {
@@ -87,29 +119,16 @@ internal object TvPerformanceProfile {
      * stop exporting per-focus semantics unless a real screen reader is enabled.
      */
     private val suppressFocusSemanticsOnVendorScanner: Boolean by lazy {
-        if (!isConstrained) {
-            false
-        } else {
-            runCatching {
-                val enabled =
+        runCatching {
+            TvPerformancePolicy.suppressFocusSemantics(
+                constrained = isConstrained,
+                enabledServices =
                     Settings.Secure.getString(
                         Graph.appContext.contentResolver,
                         Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                    ).orEmpty()
-                val packages =
-                    enabled.split(':')
-                        .map { it.substringBefore('/').trim() }
-                        .filter { it.isNotEmpty() }
-                val vendorScanner = packages.any { it.startsWith(VENDOR_ACCESSIBILITY_PREFIX) }
-                val screenReader =
-                    packages.any {
-                        it == "com.google.android.marvin.talkback" ||
-                            it == "com.android.talkback" ||
-                            it.contains("screenreader", ignoreCase = true)
-                    }
-                vendorScanner && !screenReader
-            }.getOrDefault(false)
-        }
+                    ).orEmpty(),
+            )
+        }.getOrDefault(false)
     }
 
     val suppressFocusSemantics: Boolean

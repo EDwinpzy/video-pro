@@ -1,6 +1,8 @@
 package com.qiubo.optimaltv
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TvPerformanceProfileTest {
@@ -160,5 +162,38 @@ class TvPerformanceProfileTest {
         assertEquals(TvPerformanceTier.BALANCED, TvPerformancePolicy.tier(256, 4, false))
         assertEquals(true, TvPerformancePolicy.focusScaleMotionEnabled(TvPerformanceTier.BALANCED))
         assertEquals(true, TvPerformancePolicy.navigationMotionEnabled(TvPerformanceTier.BALANCED))
+    }
+
+    @Test
+    fun suppressesComposeSemanticsForOwnVoiceGatewayOnConstrainedDevice() {
+        assertTrue(
+            TvPerformancePolicy.suppressFocusSemantics(
+                constrained = true,
+                enabledServices =
+                    "com.dongpiandi.voicehelper/com.dongpiandi.voicehelper" +
+                        ".VoiceGatewayService",
+            ),
+        )
+    }
+
+    @Test
+    fun keepsComposeSemanticsForScreenReaderOrBalancedDevice() {
+        assertFalse(
+            TvPerformancePolicy.suppressFocusSemantics(
+                constrained = true,
+                enabledServices =
+                    "com.dongpiandi.voicehelper/com.dongpiandi.voicehelper" +
+                        ".VoiceGatewayService:" +
+                        "com.google.android.marvin.talkback/.TalkBackService",
+            ),
+        )
+        assertFalse(
+            TvPerformancePolicy.suppressFocusSemantics(
+                constrained = false,
+                enabledServices =
+                    "com.dongpiandi.voicehelper/com.dongpiandi.voicehelper" +
+                        ".VoiceGatewayService",
+            ),
+        )
     }
 }
