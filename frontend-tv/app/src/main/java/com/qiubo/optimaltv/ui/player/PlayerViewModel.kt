@@ -1075,7 +1075,8 @@ class PlayerViewModel(
                 // ticker 500ms 一变）量化到整秒——StateFlow 按结构相等去重，隐藏期
                 // 发射频率 2Hz→1Hz，播放页/电视页整页重组减半（可见时保持 500ms 原速，
                 // 进度条依旧平滑）。VM 内部 stall 检测（8×1s 窗口）/进度落盘（5s）精度无损。
-                val hide = !_ui.value.controlsVisible
+                val currentUi = _ui.value
+                val hide = !currentUi.controlsVisible
                 val pendingSeek = pendingVodSeekTargetMs.takeIf { retriesCurrentVodUntilUserLeaves() }
                 val positionForUi = if (
                     pendingSeek != null && (remoteSeekJob?.isActive == true ||
@@ -1086,21 +1087,22 @@ class PlayerViewModel(
                     if (pendingSeek != null) pendingVodSeekTargetMs = null
                     st.positionMs
                 }
-                val panelOpen = _ui.value.panel == Panel.MORE
-                val progressQuantumMs =
-                    when {
-                        panelOpen && com.qiubo.optimaltv.TvPerformanceProfile.isConstrained -> 10_000L
-                        hide -> 1_000L
-                        else -> 0L
-                    }
+                val panelOpen = currentUi.panel == Panel.MORE
+                val progressQuantumMs = if (hide) 1_000L else 0L
                 val posOut =
-                    if (progressQuantumMs > 0L) {
+                    if (panelOpen) {
+                        // The sidebar only needs a snapshot. Freezing its progress fields lets
+                        // StateFlow de-duplicate the 500ms engine ticker instead of
+                        // recomposing the episode/source panel while the user navigates.
+                        currentUi.positionMs
+                    } else if (progressQuantumMs > 0L) {
                         positionForUi / progressQuantumMs * progressQuantumMs
                     } else {
                         positionForUi
                     }
                 val bufOut =
                     when {
+                        panelOpen -> currentUi.bufferedAheadMs
                         progressQuantumMs > 0L ->
                             st.bufferedAheadMs / progressQuantumMs * progressQuantumMs
                         hide -> st.bufferedAheadMs / 1_000 * 1_000
