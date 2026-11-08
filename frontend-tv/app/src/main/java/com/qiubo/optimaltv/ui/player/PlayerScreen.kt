@@ -439,7 +439,7 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        if (ui.fatalMsg == null &&
+        if (ui.fatalMsg == null && !ui.seamlessEpisodeSwitch &&
             (ui.sourceResolving || ui.playState == EnginePlayState.BUFFERING ||
                 (ui.playState == EnginePlayState.READY && ui.isPlaying && !ui.firstFrameRendered))
         ) {
