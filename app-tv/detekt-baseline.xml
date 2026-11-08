@@ -1,0 +1,21 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$private fun captureAudio(session: Session)</ID>
+    <ID>CyclomaticComplexMethod:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$private fun handleVendorEvent( session: Session, event: Any, )</ID>
+    <ID>CyclomaticComplexMethod:VendorIatTranscript.kt$VendorIatTranscript$fun accept(json: String): Result?</ID>
+    <ID>LoopWithTooManyJumpStatements:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$for</ID>
+    <ID>LoopWithTooManyJumpStatements:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$while</ID>
+    <ID>NestedBlockDepth:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$private fun captureAudio(session: Session)</ID>
+    <ID>NestedBlockDepth:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$private fun handleVendorEvent( session: Session, event: Any, )</ID>
+    <ID>ReturnCount:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$private fun captureAudio(session: Session)</ID>
+    <ID>ReturnCount:JmgoDictationRecognizer.kt$JmgoDictationRecognizer$private fun handleVendorEvent( session: Session, event: Any, )</ID>
+    <ID>ReturnCount:SystemDictationController.kt$SystemDictationController$fun onKeyEvent(event: KeyEvent): Boolean</ID>
+    <ID>ReturnCount:SystemDictationController.kt$SystemDictationController$private fun release()</ID>
+    <ID>ReturnCount:SystemDictationRecognizer.kt$SystemDictationRecognizerFactory$fun create(context: android.content.Context): SystemDictationRecognizer</ID>
+    <ID>ReturnCount:SystemDictationService.kt$SystemDictationInput$fun commit( editor: Long, text: String, ): Boolean</ID>
+    <ID>ReturnCount:SystemDictationService.kt$SystemDictationService$override fun onKeyEvent(event: KeyEvent): Boolean</ID>
+    <ID>ReturnCount:SystemDictationSession.kt$SystemDictationSession$fun finish( token: Int, text: String?, currentEditor: Long?, ): String?</ID>
+  </CurrentIssues>
+</SmellBaseline>
