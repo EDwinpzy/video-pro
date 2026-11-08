@@ -11,10 +11,55 @@ class ShortDramaEpisodeNavigationPolicyTest {
 
     @Test
     fun onlyAuthoritativeShortDramaCategoriesEnableTheShortcut() {
-        listOf("6", "douban:6", "hhkan:6", "douban:short", "hhkan:SHORT")
+        listOf(
+            "6",
+            "douban:6",
+            "hhkan:6",
+            "douban:short",
+            "hhkan:SHORT",
+            "douban:short_drama",
+            "short_drama",
+            "douban:短剧",
+        )
             .forEach { assertTrue(it, ShortDramaEpisodeNavigationPolicy.isShortDrama(it)) }
         listOf("", "douban:movie", "douban:tv", "douban:anime", "douban:variety", "hhkan:1")
             .forEach { assertFalse(it, ShortDramaEpisodeNavigationPolicy.isShortDrama(it)) }
+    }
+
+    @Test
+    fun shortFormMetadataEnablesTheShortcutWhenTheCategoryIsNotAuthoritative() {
+        assertTrue(
+            shortDrama(
+                categoryIds = listOf("douban:anime"),
+                metadata = "2026 / 中国大陆 / 短剧 / 现代都市",
+                episodeCount = 46,
+                durationMs = 126_000,
+            ),
+        )
+        assertTrue(
+            shortDrama(
+                categoryIds = listOf("douban:anime"),
+                metadata = "2026 / 中国大陆 / 漫剧 / AI漫剧",
+                episodeCount = 5,
+                durationMs = 124_000,
+            ),
+        )
+        assertFalse(
+            shortDrama(
+                categoryIds = listOf("douban:anime"),
+                metadata = "2026 / 日本 / 漫剧 / 动画",
+                episodeCount = 12,
+                durationMs = 24 * 60 * 1000L,
+            ),
+        )
+        assertFalse(
+            shortDrama(
+                categoryIds = listOf("douban:anime"),
+                metadata = "2026 / 中国大陆 / 短剧",
+                episodeCount = 1,
+                durationMs = 126_000,
+            ),
+        )
     }
 
     @Test
@@ -24,7 +69,7 @@ class ShortDramaEpisodeNavigationPolicyTest {
         assertFalse(canIntercept(dialogOpen = true))
         assertFalse(canIntercept(isLive = true))
         assertFalse(canIntercept(hasFatalError = true))
-        assertFalse(canIntercept(categoryId = "douban:tv"))
+        assertFalse(canIntercept(shortDrama = false))
     }
 
     @Test
@@ -59,7 +104,7 @@ class ShortDramaEpisodeNavigationPolicyTest {
         val release = keyUp(handler)
         assertTrue(release.consumed)
         assertNull(release.targetEpisode)
-        assertEquals(2, keyDown(handler, currentEpisode = 1, downTimeMs = 200)?.targetEpisode)
+        assertEquals(2, keyDown(handler, currentEpisode = 1, downTimeMs = 200).targetEpisode)
     }
 
     @Test
@@ -90,10 +135,10 @@ class ShortDramaEpisodeNavigationPolicyTest {
 
         assertFalse(keyDown(handler, panelOpen = true).consumed)
         assertFalse(keyDown(handler, dialogOpen = true).consumed)
-        assertFalse(keyDown(handler, categoryId = "douban:tv").consumed)
+        assertFalse(keyDown(handler, shortDrama = false).consumed)
         assertFalse(
             handler.handle(
-                categoryId = "douban:short",
+                shortDrama = true,
                 keyCode = KeyEvent.KEYCODE_DPAD_LEFT,
                 action = KeyEvent.ACTION_DOWN,
                 repeatCount = 0,
@@ -110,13 +155,13 @@ class ShortDramaEpisodeNavigationPolicyTest {
     }
 
     private fun canIntercept(
-        categoryId: String = "douban:short",
+        shortDrama: Boolean = true,
         panelOpen: Boolean = false,
         dialogOpen: Boolean = false,
         isLive: Boolean = false,
         hasFatalError: Boolean = false,
     ): Boolean = ShortDramaEpisodeNavigationPolicy.canIntercept(
-        categoryId = categoryId,
+        shortDrama = shortDrama,
         panelOpen = panelOpen,
         dialogOpen = dialogOpen,
         isLive = isLive,
@@ -126,14 +171,14 @@ class ShortDramaEpisodeNavigationPolicyTest {
     private fun keyDown(
         handler: ShortDramaEpisodeKeyHandler,
         currentEpisode: Int = 0,
-        categoryId: String = "douban:short",
+        shortDrama: Boolean = true,
         repeatCount: Int = 0,
         downTimeMs: Long = 100,
         panelOpen: Boolean = false,
         dialogOpen: Boolean = false,
         switchingEpisode: Boolean = false,
     ): ShortDramaEpisodeKeyResult = handler.handle(
-        categoryId = categoryId,
+        shortDrama = shortDrama,
         keyCode = KeyEvent.KEYCODE_DPAD_DOWN,
         action = KeyEvent.ACTION_DOWN,
         repeatCount = repeatCount,
@@ -150,7 +195,7 @@ class ShortDramaEpisodeNavigationPolicyTest {
     private fun keyUp(
         handler: ShortDramaEpisodeKeyHandler,
     ): ShortDramaEpisodeKeyResult = handler.handle(
-        categoryId = "douban:short",
+        shortDrama = true,
         keyCode = KeyEvent.KEYCODE_DPAD_DOWN,
         action = KeyEvent.ACTION_UP,
         repeatCount = 0,
@@ -162,5 +207,17 @@ class ShortDramaEpisodeNavigationPolicyTest {
         isLive = false,
         hasFatalError = false,
         switchingEpisode = false,
+    )
+
+    private fun shortDrama(
+        categoryIds: List<String>,
+        metadata: String,
+        episodeCount: Int,
+        durationMs: Long,
+    ): Boolean = ShortDramaEpisodeNavigationPolicy.isShortDrama(
+        categoryIds = categoryIds,
+        metadata = metadata,
+        episodeCount = episodeCount,
+        durationMs = durationMs,
     )
 }

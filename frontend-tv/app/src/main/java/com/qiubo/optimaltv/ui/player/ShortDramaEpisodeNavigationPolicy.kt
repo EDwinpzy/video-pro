@@ -4,18 +4,34 @@ import android.view.KeyEvent
 
 /** Short drama episode shortcuts own UP/DOWN during ordinary playback, including while the HUD is visible. */
 internal object ShortDramaEpisodeNavigationPolicy {
-    fun isShortDrama(categoryId: String): Boolean {
-        val category = categoryId.trim().substringAfterLast(':').lowercase()
-        return category == "short" || category.toIntOrNull() == SHORT_DRAMA_CATEGORY
+    fun isShortDrama(categoryId: String): Boolean =
+        isShortDrama(
+            categoryIds = listOf(categoryId),
+            metadata = "",
+            episodeCount = 0,
+            durationMs = 0L,
+        )
+
+    fun isShortDrama(
+        categoryIds: List<String>,
+        metadata: String,
+        episodeCount: Int,
+        durationMs: Long,
+    ): Boolean {
+        if (categoryIds.any(::isShortDramaCategory)) return true
+        if (episodeCount <= 1) return false
+        val text = metadata.lowercase()
+        if (SHORT_FORM_MARKERS.none(text::contains)) return false
+        return durationMs <= 0L || durationMs <= MAX_SHORT_EPISODE_MS
     }
 
     fun canIntercept(
-        categoryId: String,
+        shortDrama: Boolean,
         panelOpen: Boolean,
         dialogOpen: Boolean,
         isLive: Boolean,
         hasFatalError: Boolean,
-    ): Boolean = isShortDrama(categoryId) &&
+    ): Boolean = shortDrama &&
         !panelOpen &&
         !dialogOpen &&
         !isLive &&
@@ -35,6 +51,16 @@ internal object ShortDramaEpisodeNavigationPolicy {
         return target.takeIf { it in 0 until episodeCount }
     }
 
+    private fun isShortDramaCategory(categoryId: String): Boolean {
+        val category = categoryId.trim().substringAfterLast(':').lowercase()
+        return category == "short" ||
+            category == "short_drama" ||
+            category == "短剧" ||
+            category.toIntOrNull() == SHORT_DRAMA_CATEGORY
+    }
+
+    private val SHORT_FORM_MARKERS = listOf("短剧", "竖屏剧", "迷你剧", "漫剧")
+    private const val MAX_SHORT_EPISODE_MS = 10 * 60 * 1000L
     private const val SHORT_DRAMA_CATEGORY = 6
 }
 
@@ -55,7 +81,7 @@ internal class ShortDramaEpisodeKeyHandler {
     private val activePresses = mutableMapOf<Int, Long>()
 
     fun handle(
-        categoryId: String,
+        shortDrama: Boolean,
         keyCode: Int,
         action: Int,
         repeatCount: Int,
@@ -73,7 +99,7 @@ internal class ShortDramaEpisodeKeyHandler {
         }
 
         val canIntercept = ShortDramaEpisodeNavigationPolicy.canIntercept(
-            categoryId = categoryId,
+            shortDrama = shortDrama,
             panelOpen = panelOpen,
             dialogOpen = dialogOpen,
             isLive = isLive,

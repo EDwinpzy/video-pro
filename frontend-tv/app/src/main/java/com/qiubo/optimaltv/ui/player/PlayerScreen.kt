@@ -142,6 +142,15 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
     val shortDramaEpisodeKeys = remember(vodId) { ShortDramaEpisodeKeyHandler() }
+    val catalogCategoryId = remember(vodId, ui.title, ui.sourceResolving) {
+        Graph.repo.itemById(vodId)?.categoryId.orEmpty()
+    }
+    val shortDrama = ShortDramaEpisodeNavigationPolicy.isShortDrama(
+        categoryIds = listOf(ui.categoryId, catalogCategoryId),
+        metadata = listOf(ui.title, ui.meta).joinToString(" "),
+        episodeCount = ui.epCount,
+        durationMs = ui.durationMs,
+    )
 
     // KEEP_SCREEN_ON：投影仪防息屏
     val activity = LocalContext.current as Activity
@@ -218,6 +227,19 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
             runCatching { rootFocus.requestFocus() }
         }
     }
+    fun switchShortDramaEpisode(dir: Int) {
+        val keyCode = when (dir) {
+            NAV_UP -> KeyEvent.KEYCODE_DPAD_UP
+            NAV_DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
+            else -> return
+        }
+        ShortDramaEpisodeNavigationPolicy.targetEpisode(
+            keyCode = keyCode,
+            currentEpisode = ui.epIndex,
+            episodeCount = ui.epCount,
+        )?.let(vm::switchEpisode)
+        tick++
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -225,9 +247,19 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
             .tvReducedSemantics()
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
+                if (com.qiubo.optimaltv.BuildConfig.DEBUG &&
+                    native.action == KeyEvent.ACTION_DOWN &&
+                    (native.keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                        native.keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
+                ) {
+                    com.qiubo.optimaltv.OtvLog.i(
+                        "short-drama key cat=${ui.categoryId} catalog=$catalogCategoryId " +
+                            "ep=${ui.epIndex}/${ui.epCount} short=$shortDrama",
+                    )
+                }
                 vm.onRemoteDirectionKey(native)
                 val episodeKey = shortDramaEpisodeKeys.handle(
-                    categoryId = ui.categoryId,
+                    shortDrama = shortDrama,
                     keyCode = native.keyCode,
                     action = native.action,
                     repeatCount = native.repeatCount,
@@ -249,6 +281,10 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
             .navSink(requester = rootFocus) { dir ->
                 when {
                     ui.controlsVisible || ui.panel != Panel.NONE -> false
+                    shortDrama && (dir == NAV_UP || dir == NAV_DOWN) -> {
+                        switchShortDramaEpisode(dir)
+                        true
+                    }
                     ui.isLive -> {
                         // 直播收起态：任意方向键呼信号源条（LiveSourcePicker 会把焦点
                         // 落到当前源 chip，恢复真实导航）
@@ -438,6 +474,8 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
             VodPlayerOverlay(
                 ui = ui,
                 vm = vm,
+                shortDrama = shortDrama,
+                onShortDramaDirection = ::switchShortDramaEpisode,
                 onTick = { tick++ },
                 onBack = ::onBackPressed,
                 centerPlayFocus = centerPlayFocus,
@@ -595,6 +633,8 @@ private fun LiveSourcePicker(
 private fun VodPlayerOverlay(
     ui: PlayerUiState,
     vm: PlayerViewModel,
+    shortDrama: Boolean,
+    onShortDramaDirection: (Int) -> Unit,
     onTick: () -> Unit,
     onBack: () -> Unit,
     centerPlayFocus: FocusRequester,
@@ -627,6 +667,10 @@ private fun VodPlayerOverlay(
                 onTick(); return true
             }
             com.qiubo.optimaltv.ui.components.NAV_UP, com.qiubo.optimaltv.ui.components.NAV_DOWN -> {
+                if (shortDrama) {
+                    onShortDramaDirection(dir)
+                    return true
+                }
                 vm.toggleControls(); return true
             }
         }
