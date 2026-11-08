@@ -69,6 +69,8 @@ internal object DanmakuLanePolicy {
 }
 
 internal object DanmakuPresentationPolicy {
+    const val BASE_TEXT_SIZE_SP = 24
+
     fun laneCount(
         displayArea: DanmakuDisplayArea,
         viewportHeightPx: Int,
@@ -83,6 +85,9 @@ internal object DanmakuPresentationPolicy {
 
     fun textSizeSp(baseSize: Int, fontScale: Float): Float =
         (baseSize * fontScale.coerceIn(0.75f, 1.25f)).coerceIn(14f, 36f)
+
+    fun defaultTextSizeSp(fontScale: Float): Float =
+        textSizeSp(BASE_TEXT_SIZE_SP, fontScale)
 
     fun estimatedTextWidthPx(
         content: String,
@@ -188,10 +193,10 @@ private fun DanmakuCanvasOverlay(
                 ) { item ->
                     val textSizePx =
                         with(density) {
-                            DanmakuPresentationPolicy.textSizeSp(
-                                item.fontSize.coerceIn(16, 30),
-                                normalizedFontScale,
-                            ).sp.toPx()
+                            DanmakuPresentationPolicy
+                                .defaultTextSizeSp(normalizedFontScale)
+                                .sp
+                                .toPx()
                         }
                     DanmakuPresentationPolicy.estimatedTextWidthPx(
                         content = item.content,
@@ -284,7 +289,6 @@ private const val POSITION_CORRECTION_MS = 1_500L
 
 private data class DanmakuPaintKey(
     val color: Int,
-    val fontSize: Int,
 )
 
 internal class DanmakuActiveWindow(
@@ -341,7 +345,6 @@ private class DanmakuPaintCache(
         val key =
             DanmakuPaintKey(
                 color = item.color,
-                fontSize = item.fontSize,
             )
         cache.get(key)?.let { return it }
         return render(item).also { cache.put(key, it) }
@@ -354,10 +357,10 @@ private class DanmakuPaintCache(
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             textSize =
                 with(density) {
-                    DanmakuPresentationPolicy.textSizeSp(
-                        item.fontSize.coerceIn(16, 30),
-                        normalizedFontScale,
-                    ).sp.toPx()
+                    DanmakuPresentationPolicy
+                        .defaultTextSizeSp(normalizedFontScale)
+                        .sp
+                        .toPx()
                 }
             color =
                 (0xFF000000.toInt() or

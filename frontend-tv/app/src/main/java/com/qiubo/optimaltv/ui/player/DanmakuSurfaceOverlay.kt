@@ -355,10 +355,8 @@ private class DanmakuSurfaceRenderer(
                 gapPx = gapPx,
             ) { item ->
                 val textSizePx =
-                    DanmakuPresentationPolicy.textSizeSp(
-                        item.fontSize.coerceIn(16, 30),
-                        normalizedFontScale,
-                    ) * frame.spToPx
+                    DanmakuPresentationPolicy.defaultTextSizeSp(normalizedFontScale) *
+                        frame.spToPx
                 DanmakuPresentationPolicy.estimatedTextWidthPx(
                     content = item.content,
                     textSizePx = textSizePx,
@@ -395,7 +393,6 @@ private class DanmakuSurfaceRenderer(
 private data class SurfaceTextKey(
     val content: String,
     val color: Int,
-    val fontSize: Int,
 )
 
 private data class SurfaceRenderedDanmaku(
@@ -422,7 +419,6 @@ private class SurfaceTextBitmapCache(
             SurfaceTextKey(
                 content = item.content,
                 color = item.color,
-                fontSize = item.fontSize,
             )
         cache.get(key)?.let { return it }
         return render(item).also { cache.put(key, it) }
@@ -430,10 +426,7 @@ private class SurfaceTextBitmapCache(
 
     private fun render(item: DanmakuItem): SurfaceRenderedDanmaku {
         val textSizePx =
-            DanmakuPresentationPolicy.textSizeSp(
-                item.fontSize.coerceIn(16, 30),
-                normalizedFontScale,
-            ) * spToPx
+            DanmakuPresentationPolicy.defaultTextSizeSp(normalizedFontScale) * spToPx
         val fillPaint =
             AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG or AndroidPaint.SUBPIXEL_TEXT_FLAG).apply {
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
