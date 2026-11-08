@@ -1,5 +1,7 @@
 package com.qiubo.optimaltv.ui.player
 
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -69,6 +71,7 @@ import com.qiubo.optimaltv.ui.components.NAV_LEFT
 import com.qiubo.optimaltv.ui.components.NAV_RIGHT
 import com.qiubo.optimaltv.ui.components.NAV_UP
 import com.qiubo.optimaltv.ui.components.RemotePoster
+import com.qiubo.optimaltv.ui.components.SystemEditText
 import com.qiubo.optimaltv.ui.components.dpadFocusable
 import com.qiubo.optimaltv.ui.components.episodeEntryCustomName
 import kotlinx.coroutines.launch
@@ -155,6 +158,11 @@ private enum class SidebarTab(val label: String) {
     Sources("片源"),
 }
 
+private enum class SkipEditTarget {
+    Intro,
+    Outro,
+}
+
 private data class SidebarStart(val row: Int, val column: Int)
 
 private data class SidebarSettingRow(
@@ -165,23 +173,8 @@ private data class SidebarSettingRow(
     val onSelect: (Int) -> Unit,
 )
 
-private fun skipOptions(seconds: Int): List<String> =
-    listOf(
-        "-${SkipSegmentSettings.COARSE_STEP_SECONDS}s",
-        "-${SkipSegmentSettings.FINE_STEP_SECONDS}s",
-        if (seconds <= 0) "关" else "${seconds}秒",
-        "+${SkipSegmentSettings.FINE_STEP_SECONDS}s",
-        "+${SkipSegmentSettings.COARSE_STEP_SECONDS}s",
-    )
-
-private fun steppedSkipSeconds(seconds: Int, column: Int): Int =
-    when (column) {
-        0 -> seconds - SkipSegmentSettings.COARSE_STEP_SECONDS
-        1 -> seconds - SkipSegmentSettings.FINE_STEP_SECONDS
-        3 -> seconds + SkipSegmentSettings.FINE_STEP_SECONDS
-        4 -> seconds + SkipSegmentSettings.COARSE_STEP_SECONDS
-        else -> seconds
-    }
+private fun skipValueLabel(seconds: Int): String =
+    if (seconds <= 0) "关闭" else "${seconds}秒"
 
 /**
  * Accepted playback sidebar: fixed film header, three tabs, compact settings and
@@ -228,24 +221,28 @@ internal fun ClassicMorePanel(
                 abs(PlayerViewModel.SPEED_STEPS[it] - ui.speed)
             } ?: 0
     val displayAreas = DanmakuDisplayArea.menuEntries
+    var editingSkip by remember { mutableStateOf<SkipEditTarget?>(null) }
+    var skipDraft by remember { mutableStateOf("") }
+    var pendingStart by remember { mutableStateOf<SidebarStart?>(null) }
+    var contentRequest by remember { mutableIntStateOf(0) }
     val settingRows =
         listOf(
             SidebarSettingRow(
                 label = "片头跳过",
-                options = skipOptions(ui.skipIntroSeconds),
-                selectedIndex = 2,
-                onSelect = { column ->
-                    val next = steppedSkipSeconds(ui.skipIntroSeconds, column)
-                    if (next != ui.skipIntroSeconds) vm.setSkipIntroSeconds(next)
+                options = listOf(skipValueLabel(ui.skipIntroSeconds)),
+                selectedIndex = 0,
+                onSelect = {
+                    editingSkip = SkipEditTarget.Intro
+                    skipDraft = ui.skipIntroSeconds.toString()
                 },
             ),
             SidebarSettingRow(
                 label = "片尾跳过",
-                options = skipOptions(ui.skipOutroSeconds),
-                selectedIndex = 2,
-                onSelect = { column ->
-                    val next = steppedSkipSeconds(ui.skipOutroSeconds, column)
-                    if (next != ui.skipOutroSeconds) vm.setSkipOutroSeconds(next)
+                options = listOf(skipValueLabel(ui.skipOutroSeconds)),
+                selectedIndex = 0,
+                onSelect = {
+                    editingSkip = SkipEditTarget.Outro
+                    skipDraft = ui.skipOutroSeconds.toString()
                 },
             ),
             SidebarSettingRow(
@@ -299,16 +296,15 @@ internal fun ClassicMorePanel(
         )
 
     val contentRows =
-        when (selectedTab) {
-            SidebarTab.Episodes -> episodeRows.map { it.size }
-            SidebarTab.Settings -> settingRows.map { it.options.size }
-            SidebarTab.Sources -> sourceRows.map { it.size }
+        when {
+            editingSkip != null && selectedTab == SidebarTab.Settings -> emptyList()
+            selectedTab == SidebarTab.Episodes -> episodeRows.map { it.size }
+            selectedTab == SidebarTab.Settings -> settingRows.map { it.options.size }
+            else -> sourceRows.map { it.size }
         }
     val contentFocus = rememberPlayerPanelFocus(contentRows)
     val tabRequesters = remember { SidebarTab.entries.associateWith { FocusRequester() } }
     val scope = rememberCoroutineScope()
-    var pendingStart by remember { mutableStateOf<SidebarStart?>(null) }
-    var contentRequest by remember { mutableIntStateOf(0) }
 
     fun initialStart(tab: SidebarTab): SidebarStart =
         when (tab) {
@@ -343,6 +339,8 @@ internal fun ClassicMorePanel(
     }
 
     fun moveTab(tab: SidebarTab) {
+        editingSkip = null
+        skipDraft = ""
         selectedTab = tab
         focusTab(tab)
     }
@@ -355,6 +353,21 @@ internal fun ClassicMorePanel(
         }
         contentFocus.navigate(row, column, direction)
         return true
+    }
+
+    fun closeSkipEditor(save: Boolean) {
+        val target = editingSkip ?: return
+        if (save) {
+            val seconds = SkipSegmentSettings.secondsFromDraft(skipDraft)
+            when (target) {
+                SkipEditTarget.Intro -> vm.setSkipIntroSeconds(seconds)
+                SkipEditTarget.Outro -> vm.setSkipOutroSeconds(seconds)
+            }
+        }
+        editingSkip = null
+        skipDraft = ""
+        pendingStart = SidebarStart(row = if (target == SkipEditTarget.Intro) 0 else 1, column = 0)
+        contentRequest++
     }
 
     LaunchedEffect(Unit) {
@@ -444,7 +457,11 @@ internal fun ClassicMorePanel(
                     selectedTab = selectedTab,
                     episodeCount = ui.epCount.takeIf { !ui.isMovie && it > 1 },
                     requesters = tabRequesters,
-                    onSelect = { selectedTab = it },
+                    onSelect = {
+                        editingSkip = null
+                        skipDraft = ""
+                        selectedTab = it
+                    },
                     onMove = ::moveTab,
                     onEnterContent = { requestContentFocus(selectedTab) },
                 )
@@ -463,11 +480,21 @@ internal fun ClassicMorePanel(
                                 onNavigate = ::navigateContent,
                             )
                         SidebarTab.Settings ->
-                            SidebarSettingsContent(
-                                rows = settingRows,
-                                focus = contentFocus,
-                                onNavigate = ::navigateContent,
-                            )
+                            if (editingSkip != null) {
+                                SidebarSkipEditor(
+                                    target = editingSkip!!,
+                                    draft = skipDraft,
+                                    onDraftChange = { skipDraft = it },
+                                    onCancel = { closeSkipEditor(save = false) },
+                                    onConfirm = { closeSkipEditor(save = true) },
+                                )
+                            } else {
+                                SidebarSettingsContent(
+                                    rows = settingRows,
+                                    focus = contentFocus,
+                                    onNavigate = ::navigateContent,
+                                )
+                            }
                         SidebarTab.Sources ->
                             SidebarSourcesContent(
                                 ui = ui,
@@ -964,6 +991,74 @@ private fun SidebarSettingsContent(
             }
             Spacer(Modifier.height(2.dp))
         }
+    }
+}
+
+@Composable
+private fun SidebarSkipEditor(
+    target: SkipEditTarget,
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        SidebarSectionHeading(
+            if (target == SkipEditTarget.Intro) "片头跳过（秒）" else "片尾跳过（秒）",
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "直接输入秒数，0 表示关闭。",
+            color = SidebarMuted,
+            fontSize = 11.sp,
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .background(SidebarChip, RoundedCornerShape(10.dp))
+                .border(1.dp, SidebarAccent.copy(alpha = 0.48f), RoundedCornerShape(10.dp))
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SystemEditText(
+                value = draft,
+                onValueChange = { onDraftChange(SkipSegmentSettings.normalizeDraft(it)) },
+                hint = "输入 0-${SkipSegmentSettings.MAX_SECONDS}",
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                numeric = true,
+                imeAction = EditorInfo.IME_ACTION_DONE,
+                onImeAction = onConfirm,
+                onKeyDown = { event ->
+                    if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+                        onCancel()
+                        true
+                    } else {
+                        false
+                    }
+                },
+                textSizeSp = 24f,
+                textColor = SidebarIvory,
+                hintTextColor = SidebarMuted,
+                selectAllOnFocus = true,
+                autoFocus = true,
+                autoFocusShowsKeyboard = true,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "秒",
+                color = SidebarMutedWarm,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "输入后按遥控器「完成」保存，返回取消。",
+            color = SidebarMuted,
+            fontSize = 9.5.sp,
+        )
     }
 }
 
