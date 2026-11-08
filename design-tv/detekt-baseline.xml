@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>LongParameterList:VideoProTvRoot.kt$( state: VideoProUiState, strings: VideoProStrings, coordinator: VideoProCoordinator, onExitConfirmed: () -&gt; Unit, systemDictationEnabled: Boolean, onOpenSystemDictationSettings: () -&gt; Unit, modifier: Modifier, )</ID>
+  </CurrentIssues>
+</SmellBaseline>

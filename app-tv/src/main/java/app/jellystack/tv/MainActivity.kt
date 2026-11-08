@@ -24,11 +24,12 @@ class MainActivity : AppCompatActivity() {
                 if (granted) {
                     openDictationSettings()
                 } else {
-                    Toast.makeText(
-                        this,
-                        R.string.system_dictation_microphone_denied,
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    Toast
+                        .makeText(
+                            this,
+                            R.string.system_dictation_microphone_denied,
+                            Toast.LENGTH_SHORT,
+                        ).show()
                 }
             }
         }

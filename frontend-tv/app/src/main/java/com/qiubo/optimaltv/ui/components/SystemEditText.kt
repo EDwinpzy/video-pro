@@ -80,6 +80,7 @@ fun SystemEditText(
     handle: SystemEditTextHandle = rememberSystemEditTextHandle(),
     enabled: Boolean = true,
     password: Boolean = false,
+    numeric: Boolean = false,
     imeAction: Int = EditorInfo.IME_ACTION_NEXT,
     onImeAction: () -> Unit = {},
     onFocusChanged: (Boolean) -> Unit = {},
@@ -87,6 +88,7 @@ fun SystemEditText(
     textSizeSp: Float = 20f,
     textColor: Color = Color.White,
     hintTextColor: Color = Color(0xB3FFFFFF),
+    selectAllOnFocus: Boolean = false,
     autoFocus: Boolean = false,
     autoFocusShowsKeyboard: Boolean = false,
 ) {
@@ -98,6 +100,8 @@ fun SystemEditText(
     val inputType =
         if (password) {
             InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        } else if (numeric) {
+            InputType.TYPE_CLASS_NUMBER
         } else {
             InputType.TYPE_CLASS_TEXT
         }
@@ -112,7 +116,7 @@ fun SystemEditText(
                 isFocusable = true
                 isFocusableInTouchMode = true
                 isCursorVisible = true
-                setSelectAllOnFocus(false)
+                setSelectAllOnFocus(selectAllOnFocus)
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
                 addTextChangedListener(
                     object : TextWatcher {
@@ -164,6 +168,7 @@ fun SystemEditText(
         update = { editor ->
             editor.isEnabled = enabled
             editor.inputType = inputType
+            editor.setSelectAllOnFocus(selectAllOnFocus)
             editor.imeOptions =
                 imeAction or
                     EditorInfo.IME_FLAG_NO_EXTRACT_UI or

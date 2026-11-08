@@ -1,5 +1,6 @@
 package com.qiubo.optimaltv.ui.player
 
+import com.qiubo.optimaltv.data.prefs.SkipSegmentSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -114,5 +115,19 @@ class SkipSegmentPolicyTest {
                 hasNextEpisode = true,
             ),
         )
+    }
+
+    @Test
+    fun manualDraftKeepsOnlyThreeDigits() {
+        assertEquals("30", SkipSegmentSettings.normalizeDraft("3a0"))
+        assertEquals("600", SkipSegmentSettings.normalizeDraft("6000"))
+        assertEquals("", SkipSegmentSettings.normalizeDraft("abc"))
+    }
+
+    @Test
+    fun manualDraftClampsToSupportedRange() {
+        assertEquals(0, SkipSegmentSettings.secondsFromDraft(""))
+        assertEquals(90, SkipSegmentSettings.secondsFromDraft("090"))
+        assertEquals(600, SkipSegmentSettings.secondsFromDraft("999"))
     }
 }

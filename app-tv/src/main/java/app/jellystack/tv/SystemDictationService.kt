@@ -29,17 +29,17 @@ class SystemDictationService : AccessibilityService() {
         configureServiceInfo()
         if (BuildConfig.DEBUG) Log.d(TAG, "configured flags=${serviceInfo.flags}")
         if (controller == null) {
-            controller = SystemDictationController(
-                context = this,
-                editorSession = { input?.activeEditor() },
-                commit = { editor, text -> input?.commit(editor, text) == true },
-            )
+            controller =
+                SystemDictationController(
+                    context = this,
+                    editorSession = { input?.activeEditor() },
+                    commit = { editor, text -> input?.commit(editor, text) == true },
+                )
         }
     }
 
     @android.annotation.TargetApi(33)
-    override fun onCreateInputMethod(): InputMethod =
-        SystemDictationInput(this).also { input = it }
+    override fun onCreateInputMethod(): InputMethod = SystemDictationInput(this).also { input = it }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
@@ -125,7 +125,10 @@ private class SystemDictationInput(
                 currentInputEditorInfo?.inputType != android.text.InputType.TYPE_NULL
         }
 
-    fun commit(editor: Long, text: String): Boolean {
+    fun commit(
+        editor: Long,
+        text: String,
+    ): Boolean {
         if (editor != activeEditor()) return false
         val connection = currentInputConnection ?: return false
         connection.commitText(text, 1, null as TextAttribute?)

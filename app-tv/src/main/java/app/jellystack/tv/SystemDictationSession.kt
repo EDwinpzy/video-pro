@@ -32,7 +32,10 @@ internal class SystemDictationSession {
         return true
     }
 
-    fun observe(token: Int, text: String) {
+    fun observe(
+        token: Int,
+        text: String,
+    ) {
         if (token != generation || state == State.IDLE) return
         text.trim().takeIf(String::isNotEmpty)?.let { latestText = it }
     }
@@ -41,13 +44,22 @@ internal class SystemDictationSession {
      * Returns a transcript at most once after release. The caller must pass the editor that is still
      * active so a result from a closed or replaced input connection is never committed elsewhere.
      */
-    fun finish(token: Int, text: String?, currentEditor: Long?): String? {
+    fun finish(
+        token: Int,
+        text: String?,
+        currentEditor: Long?,
+    ): String? {
         if (token != generation || state != State.WAITING_RESULT) return null
         if (currentEditor == null || editor != currentEditor) {
             cancel()
             return null
         }
-        val transcript = text.orEmpty().trim().ifEmpty { latestText }.takeIf(String::isNotEmpty)
+        val transcript =
+            text
+                .orEmpty()
+                .trim()
+                .ifEmpty { latestText }
+                .takeIf(String::isNotEmpty)
         cancel()
         return transcript
     }
