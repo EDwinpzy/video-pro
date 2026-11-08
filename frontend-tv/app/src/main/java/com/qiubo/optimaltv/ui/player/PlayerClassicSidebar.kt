@@ -93,6 +93,7 @@ private val SidebarChipShape = RoundedCornerShape(8.dp)
 private val SidebarSourceShape = RoundedCornerShape(10.dp)
 
 private const val SidebarEpisodeColumns = 6
+private const val SidebarEpisodePageColumns = 3
 private const val SidebarSourceColumns = 2
 private const val SidebarNavGroup = "player-classic-sidebar"
 
@@ -201,8 +202,20 @@ internal fun ClassicMorePanel(
         if (selectedTab !in tabs) selectedTab = tabs.first()
     }
 
-    val episodeIndices = remember(ui.epCount) { (0 until ui.epCount.coerceAtLeast(0)).toList() }
-    val episodeRows = remember(episodeIndices) { episodeIndices.chunked(SidebarEpisodeColumns) }
+    val episodePageLabels = remember(ui.epCount) { SidebarEpisodePagePolicy.labels(ui.epCount) }
+    val episodePageRows =
+        remember(episodePageLabels) {
+            episodePageLabels.indices.toList().chunked(SidebarEpisodePageColumns)
+        }
+    var episodePage by remember(ui.epCount) {
+        mutableIntStateOf(SidebarEpisodePagePolicy.pageForEpisode(ui.epIndex, ui.epCount))
+    }
+    val pageEpisodes =
+        remember(ui.epCount, episodePage) {
+            SidebarEpisodePagePolicy.visibleRange(ui.epCount, episodePage).toList()
+        }
+    val episodeRows = remember(pageEpisodes) { pageEpisodes.chunked(SidebarEpisodeColumns) }
+    val episodeRowOffset = episodePageRows.size
     val episodeKeys = remember(ui.epKeys, ui.epNames, ui.epCount) {
         ui.epKeys.takeIf { it.size == ui.epCount }
             ?: List(ui.epCount.coerceAtLeast(0)) { index -> "${ui.epNames.getOrNull(index).orEmpty()}\u0000$index" }
@@ -298,7 +311,8 @@ internal fun ClassicMorePanel(
     val contentRows =
         when {
             editingSkip != null && selectedTab == SidebarTab.Settings -> emptyList()
-            selectedTab == SidebarTab.Episodes -> episodeRows.map { it.size }
+            selectedTab == SidebarTab.Episodes ->
+                episodePageRows.map { it.size } + episodeRows.map { it.size }
             selectedTab == SidebarTab.Settings -> settingRows.map { it.options.size }
             else -> sourceRows.map { it.size }
         }
@@ -308,11 +322,20 @@ internal fun ClassicMorePanel(
 
     fun initialStart(tab: SidebarTab): SidebarStart =
         when (tab) {
-            SidebarTab.Episodes ->
-                SidebarStart(
-                    row = ui.epIndex / SidebarEpisodeColumns,
-                    column = ui.epIndex % SidebarEpisodeColumns,
-                )
+            SidebarTab.Episodes -> {
+                val pageStart =
+                    SidebarEpisodePagePolicy.normalizePage(episodePage, ui.epCount) *
+                        SidebarEpisodePagePolicy.PAGE_SIZE
+                val localIndex = ui.epIndex - pageStart
+                if (localIndex in pageEpisodes.indices) {
+                    SidebarStart(
+                        row = episodeRowOffset + localIndex / SidebarEpisodeColumns,
+                        column = localIndex % SidebarEpisodeColumns,
+                    )
+                } else {
+                    SidebarStart(row = episodeRowOffset, column = 0)
+                }
+            }
             SidebarTab.Settings -> SidebarStart(row = 0, column = 2)
             SidebarTab.Sources ->
                 SidebarStart(
@@ -342,7 +365,18 @@ internal fun ClassicMorePanel(
         editingSkip = null
         skipDraft = ""
         selectedTab = tab
+        if (tab == SidebarTab.Episodes) {
+            episodePage = SidebarEpisodePagePolicy.pageForEpisode(ui.epIndex, ui.epCount)
+        }
         focusTab(tab)
+    }
+
+    fun selectEpisodePage(page: Int) {
+        val selected = SidebarEpisodePagePolicy.normalizePage(page, ui.epCount)
+        episodeAnchor.movedByUser()
+        episodePage = selected
+        pendingStart = SidebarStart(row = episodeRowOffset, column = 0)
+        contentRequest++
     }
 
     fun navigateContent(row: Int, column: Int, direction: Int): Boolean {
@@ -373,11 +407,22 @@ internal fun ClassicMorePanel(
     LaunchedEffect(Unit) {
         requestContentFocus(selectedTab)
     }
-    LaunchedEffect(episodeKeys) {
+    LaunchedEffect(episodeKeys, episodePage, selectedTab, contentFocus) {
         if (selectedTab != SidebarTab.Episodes) return@LaunchedEffect
         val request = episodeRestoreRequest ?: return@LaunchedEffect
         if (!episodeAnchor.isCurrent(request)) return@LaunchedEffect
-        contentFocus.focusInitial(request.index / SidebarEpisodeColumns, request.index % SidebarEpisodeColumns)
+        val targetPage = SidebarEpisodePagePolicy.pageForEpisode(request.index, ui.epCount)
+        if (targetPage != episodePage) {
+            episodePage = targetPage
+            return@LaunchedEffect
+        }
+        val pageStart = episodePage * SidebarEpisodePagePolicy.PAGE_SIZE
+        val localIndex = request.index - pageStart
+        if (localIndex !in pageEpisodes.indices) return@LaunchedEffect
+        contentFocus.focusInitial(
+            episodeRowOffset + localIndex / SidebarEpisodeColumns,
+            localIndex % SidebarEpisodeColumns,
+        )
     }
     LaunchedEffect(contentRequest, contentRows) {
         val start = pendingStart ?: return@LaunchedEffect
@@ -461,6 +506,9 @@ internal fun ClassicMorePanel(
                         editingSkip = null
                         skipDraft = ""
                         selectedTab = it
+                        if (it == SidebarTab.Episodes) {
+                            episodePage = SidebarEpisodePagePolicy.pageForEpisode(ui.epIndex, ui.epCount)
+                        }
                     },
                     onMove = ::moveTab,
                     onEnterContent = { requestContentFocus(selectedTab) },
@@ -470,13 +518,18 @@ internal fun ClassicMorePanel(
                     when (selectedTab) {
                         SidebarTab.Episodes ->
                             SidebarEpisodesContent(
-                                episodes = episodeIndices,
+                                episodes = pageEpisodes,
                                 episodeNames = ui.epNames,
                                 episodeKeys = episodeKeys,
+                                pageRows = episodePageRows,
+                                pageLabels = episodePageLabels,
+                                selectedPage = episodePage,
+                                episodeRowOffset = episodeRowOffset,
                                 currentEpisode = ui.epIndex.takeIf { ui.fatalMsg == null } ?: -1,
                                 onEntryFocused = episodeAnchor::focused,
                                 focus = contentFocus,
                                 onPick = onPickEpisode,
+                                onSelectPage = ::selectEpisodePage,
                                 onNavigate = ::navigateContent,
                             )
                         SidebarTab.Settings ->
@@ -773,10 +826,15 @@ private fun SidebarEpisodesContent(
     episodes: List<Int>,
     episodeNames: List<String>,
     episodeKeys: List<String>,
+    pageRows: List<List<Int>>,
+    pageLabels: List<String>,
+    selectedPage: Int,
+    episodeRowOffset: Int,
     currentEpisode: Int,
     onEntryFocused: (String) -> Unit,
     focus: PlayerPanelFocus,
     onPick: (Int) -> Unit,
+    onSelectPage: (Int) -> Unit,
     onNavigate: (Int, Int, Int) -> Boolean,
 ) {
     val scroll = rememberScrollState()
@@ -786,6 +844,40 @@ private fun SidebarEpisodesContent(
     Column(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
         SidebarSectionHeading(if (hasNamedEntries) "选集" else "全部剧集")
         Spacer(Modifier.height(10.dp))
+        if (pageRows.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                pageRows.forEachIndexed { row, pages ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        pages.forEachIndexed { column, page ->
+                            key("episode-page-$page") {
+                                SidebarEpisodePageChip(
+                                    page = page,
+                                    label = pageLabels[page],
+                                    selected = page == selectedPage,
+                                    focus = focus,
+                                    row = row,
+                                    column = column,
+                                    modifier =
+                                        Modifier
+                                            .weight(1f)
+                                            .height(30.dp)
+                                            .then(focus.modifier(row, column)),
+                                    onNavigate = onNavigate,
+                                    onClick = { onSelectPage(page) },
+                                )
+                            }
+                        }
+                        repeat(SidebarEpisodePageColumns - pages.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         Column(
             Modifier
                 .fillMaxWidth()
@@ -794,6 +886,7 @@ private fun SidebarEpisodesContent(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             episodes.chunked(SidebarEpisodeColumns).forEachIndexed { row, rowEpisodes ->
+                val contentRow = episodeRowOffset + row
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -807,13 +900,13 @@ private fun SidebarEpisodesContent(
                                 active = episode == currentEpisode,
                                 onEntryFocused = { onEntryFocused(identity) },
                                 focus = focus,
-                                row = row,
+                                row = contentRow,
                                 column = column,
                                 modifier =
                                     Modifier
                                         .weight(1f)
                                         .height(42.dp)
-                                        .then(focus.modifier(row, column)),
+                                        .then(focus.modifier(contentRow, column)),
                                 onNavigate = onNavigate,
                                 onClick = { onPick(episode) },
                             )
@@ -825,6 +918,108 @@ private fun SidebarEpisodesContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SidebarEpisodePageChip(
+    page: Int,
+    label: String,
+    selected: Boolean,
+    focus: PlayerPanelFocus,
+    row: Int,
+    column: Int,
+    modifier: Modifier,
+    onNavigate: (Int, Int, Int) -> Boolean,
+    onClick: () -> Unit,
+) {
+    val focused = remember { mutableStateOf(false) }
+    val motionEnabled = TvPerformanceProfile.navigationMotionEnabled
+    val background =
+        if (motionEnabled) {
+            sidebarColor(
+                target =
+                    when {
+                        focused.value -> SidebarIvory
+                        selected -> SidebarChipActive
+                        else -> SidebarChip
+                    },
+                durationMs = 90,
+                label = "sidebar-episode-page-background",
+            )
+        } else {
+            if (selected) SidebarChipActive else SidebarChip
+        }
+    val foreground =
+        if (motionEnabled) {
+            sidebarColor(
+                target =
+                    when {
+                        focused.value -> Color(0xFF141714)
+                        selected -> Color(0xFFF0C98D)
+                        else -> SidebarIvoryDim.copy(alpha = 0.84f)
+                    },
+                durationMs = 90,
+                label = "sidebar-episode-page-foreground",
+            )
+        } else {
+            if (selected) Color(0xFFF0C98D) else SidebarIvoryDim
+        }
+    Box(
+        modifier
+            .testTag("player-sidebar-episode-page-$page")
+            .onFocusChanged { focused.value = it.isFocused }
+            .dpadFocusable(
+                scaleFocused = 1.01f,
+                drawRing = false,
+                navGroup = SidebarNavGroup,
+                externalFocusRequester = focus.requester(row, column),
+                navOverride = { direction ->
+                    if (direction == NAV_DOWN) {
+                        onClick()
+                        true
+                    } else {
+                        onNavigate(row, column, direction)
+                    }
+                },
+                onClick = onClick,
+            )
+            .semantics {
+                role = Role.Button
+                contentDescription = label + if (selected) "，当前分组" else ""
+            }
+            .then(
+                if (motionEnabled) {
+                    Modifier
+                        .background(background, SidebarChipShape)
+                        .border(
+                            if (focused.value) 2.dp else 1.dp,
+                            if (focused.value) Color.White
+                            else if (selected) SidebarAccent.copy(alpha = 0.72f)
+                            else Color.White.copy(alpha = 0.06f),
+                            SidebarChipShape,
+                        )
+                } else {
+                    Modifier.sidebarLowMotionSurface(
+                        focused = focused,
+                        idleColor = SidebarChip,
+                        activeColor = if (selected) SidebarChipActive else Color.Transparent,
+                        activeBorderColor =
+                            if (selected) SidebarAccent.copy(alpha = 0.72f) else Color.Transparent,
+                        cornerRadius = 8.dp,
+                    )
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = foreground,
+            fontSize = 10.sp,
+            fontWeight = if (selected || focused.value) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -106,6 +106,37 @@ object EpisodeMenuPolicy {
         }
 }
 
+/** Page the production sidebar only when a series has enough episodes to make eager rows expensive. */
+object SidebarEpisodePagePolicy {
+    const val PAGE_SIZE = 60
+
+    fun pageCount(count: Int): Int =
+        if (count <= 0) 0 else (count + PAGE_SIZE - 1) / PAGE_SIZE
+
+    fun hasPages(count: Int): Boolean = pageCount(count) > 1
+
+    fun normalizePage(page: Int, count: Int): Int =
+        if (count <= 0) 0 else page.coerceIn(0, pageCount(count) - 1)
+
+    fun pageForEpisode(index: Int, count: Int): Int =
+        if (count <= 0) 0 else index.coerceIn(0, count - 1) / PAGE_SIZE
+
+    fun visibleRange(count: Int, page: Int): IntRange {
+        if (count <= 0) return 0 until 0
+        val start = normalizePage(page, count) * PAGE_SIZE
+        return start until minOf(count, start + PAGE_SIZE)
+    }
+
+    fun label(page: Int, count: Int): String {
+        if (count <= 0) return ""
+        val range = visibleRange(count, page)
+        return "第${range.first + 1}-${range.last + 1}集"
+    }
+
+    fun labels(count: Int): List<String> =
+        if (!hasPages(count)) emptyList() else (0 until pageCount(count)).map { label(it, count) }
+}
+
 object VisibleVodLinePolicy {
     fun apply(lines: List<LineInfo>): List<LineInfo> = lines.mapIndexed { index, line ->
         line.copy(label = line.label.trim().ifBlank { "信号源${index + 1}" })

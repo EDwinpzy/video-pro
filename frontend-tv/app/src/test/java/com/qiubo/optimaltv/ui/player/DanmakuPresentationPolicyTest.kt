@@ -77,4 +77,14 @@ class DanmakuPresentationPolicyTest {
         assertEquals(24f, short)
         assertTrue(long > short)
     }
+
+    @Test
+    fun slowerDanmakuSettingExtendsReadingTime() {
+        val viewportWidthPx = 1_920f
+        val speed = DanmakuPresentationPolicy.travelSpeedPxPerMs(viewportWidthPx, 1f)
+        val slow = DanmakuPresentationPolicy.travelSpeedPxPerMs(viewportWidthPx, 0.5f)
+
+        assertEquals(speed / 2f, slow, 0.01f)
+        assertTrue(speed > 0f)
+    }
 }

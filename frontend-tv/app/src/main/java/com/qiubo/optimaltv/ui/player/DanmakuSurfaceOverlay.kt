@@ -242,7 +242,8 @@ private class DanmakuSurfaceRenderer(
             val normalizedFontScale = frame.fontScale.coerceIn(0.75f, 1.25f)
             val laneHeightPx = 34f * frame.density * normalizedFontScale
             val topInsetPx = 22f * frame.density
-            val travelSpeedPxPerMs = widthPx * normalizedScrollSpeed / 6_500f
+            val travelSpeedPxPerMs =
+                DanmakuPresentationPolicy.travelSpeedPxPerMs(widthPx.toFloat(), normalizedScrollSpeed)
             val frameClockMs =
                 playbackClock.positionAt(
                     realtimeMs = SystemClock.elapsedRealtimeNanos() / 1_000_000,
@@ -337,7 +338,8 @@ private class DanmakuSurfaceRenderer(
         val laneHeightPx = 34f * frame.density * normalizedFontScale
         val topInsetPx = 22f * frame.density
         val gapPx = 28f * frame.density
-        val travelSpeedPxPerMs = widthPx * normalizedScrollSpeed / 6_500f
+        val travelSpeedPxPerMs =
+            DanmakuPresentationPolicy.travelSpeedPxPerMs(widthPx.toFloat(), normalizedScrollSpeed)
         val laneCount =
             DanmakuPresentationPolicy
                 .laneCount(

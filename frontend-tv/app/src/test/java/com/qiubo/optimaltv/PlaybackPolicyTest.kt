@@ -4,6 +4,7 @@ import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.ui.player.EpisodeMenuPolicy
 import com.qiubo.optimaltv.ui.player.AutoPlayPolicy
 import com.qiubo.optimaltv.ui.player.PlaybackPolicy
+import com.qiubo.optimaltv.ui.player.SidebarEpisodePagePolicy
 import com.qiubo.optimaltv.ui.player.VisibleVodLinePolicy
 import com.qiubo.optimaltv.ui.player.VodSourceSelectionPolicy
 import org.junit.Assert.assertEquals
@@ -65,6 +66,28 @@ class PlaybackPolicyTest {
     }
 
     @Test fun seekStepIsTenSeconds() = assertEquals(10_000L, PlaybackPolicy.SEEK_STEP_MS)
+
+    @Test fun sidebarKeepsShortSeriesOnOnePageAndGroupsLongSeries() {
+        assertFalse(SidebarEpisodePagePolicy.hasPages(60))
+        assertEquals(0 until 60, SidebarEpisodePagePolicy.visibleRange(60, page = 0))
+        assertTrue(SidebarEpisodePagePolicy.hasPages(61))
+        assertEquals(0 until 60, SidebarEpisodePagePolicy.visibleRange(61, page = 0))
+        assertEquals(60 until 61, SidebarEpisodePagePolicy.visibleRange(61, page = 1))
+        assertEquals(
+            listOf("第1-60集", "第61-120集", "第121-125集"),
+            SidebarEpisodePagePolicy.labels(125),
+        )
+    }
+
+    @Test fun sidebarPageInitializationFollowsThePlayingEpisode() {
+        assertEquals(0, SidebarEpisodePagePolicy.pageForEpisode(0, count = 125))
+        assertEquals(0, SidebarEpisodePagePolicy.pageForEpisode(59, count = 125))
+        assertEquals(1, SidebarEpisodePagePolicy.pageForEpisode(60, count = 125))
+        assertEquals(2, SidebarEpisodePagePolicy.pageForEpisode(999, count = 125))
+        assertEquals(2, SidebarEpisodePagePolicy.normalizePage(99, count = 125))
+        assertEquals(0 until 0, SidebarEpisodePagePolicy.visibleRange(0, page = 4))
+        assertTrue(SidebarEpisodePagePolicy.labels(60).isEmpty())
+    }
 
     @Test fun autoPlayAdvancesOnlyToTheNextVodEpisode() {
         assertEquals(3, AutoPlayPolicy.nextEpisodeIndex(isLive = false, isMovie = false, currentIndex = 2, episodeCount = 4))
