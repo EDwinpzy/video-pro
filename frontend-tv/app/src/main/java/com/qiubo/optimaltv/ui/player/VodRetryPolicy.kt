@@ -4,6 +4,7 @@ package com.qiubo.optimaltv.ui.player
 internal object VodRetryPolicy {
     const val RETRY_DELAY_MS = 1_000L
     const val SEEK_POSITION_TOLERANCE_MS = 3_000L
+    const val HARD_LINE_FAILURE_ATTEMPTS = 2
 
     fun shouldRetry(isLive: Boolean): Boolean = !isLive
 
@@ -20,6 +21,18 @@ internal object VodRetryPolicy {
         reason != null && PERMANENT_VOD_FAILURES.any(reason::contains)
 
     fun shouldUseStartupWatchdog(isLive: Boolean): Boolean = isLive
+
+    /**
+     * A provider that explicitly asks the user to switch lines cannot recover by
+     * refreshing the same ticket forever. Stalls and slow starts stay on the
+     * selected line; only unavailable-line responses advance to another source.
+     */
+    fun isUnavailableLineFailure(reason: String): Boolean =
+        reason.contains("切换线路") || reason.contains("线路解析失败")
+
+    fun shouldSwitchLineAfterFailure(reason: String, attemptsOnCurrentLine: Int): Boolean =
+        attemptsOnCurrentLine >= HARD_LINE_FAILURE_ATTEMPTS &&
+            isUnavailableLineFailure(reason)
 
     /** A not-yet-observed seek target wins over a stale engine position. */
     fun resumePositionMs(pendingSeekMs: Long?, currentPositionMs: Long): Long =

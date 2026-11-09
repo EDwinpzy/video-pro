@@ -137,7 +137,7 @@ internal fun classifyVod(meta: String, epCount: Int): String = when {
     else -> "电影"
 }
 
-/** categoryId → 分类；`douban:<mediaType>` 与旧 `hhkan:<频道号>` 都认，认不出返回 null。 */
+/** categoryId → 分类；普通数字与官方 `douban:<mediaType>` 兼容键都认，认不出返回 null。 */
 internal fun searchResultCategory(categoryId: String): String? =
     when (categoryId.substringAfterLast(':').trim()) {
         "movie", "1" -> "电影"
@@ -150,18 +150,6 @@ internal fun searchResultCategory(categoryId: String): String? =
 
 /** 认不出分类的条目才拉详情兜底，最多这么多条。 */
 private const val DETAIL_FALLBACK_LIMIT = 24
-
-/**
- * 合并目录内命中与后端结果：remote 在前、local 补充，同 id 取先出现的那条。
- *
- * 本地目录按「首次出现的浏览频道」打 categoryId（那是分区不是真实分类），
- * local 排在前面会让错分类的副本遮住后端已认定 douban:anime 的同名条目。
- */
-internal fun mergeSearchResults(
-    localHits: List<com.qiubo.optimaltv.data.model.VodItem>,
-    remote: List<com.qiubo.optimaltv.data.model.VodItem>,
-): List<com.qiubo.optimaltv.data.model.VodItem> =
-    (remote + localHits).distinctBy { it.id }
 
 /**
  * 搜索结果 → (id → 分类)。categoryId 可认的对全部结果生效；认不出的才走
@@ -255,38 +243,24 @@ fun SearchScreen(nav: NavController) {
     }
 
     val searchable = remember(query) { query.trim() }
-    var remote by remember(searchable) { mutableStateOf<List<VodItem>>(emptyList()) }
-    var remoteLoading by remember { mutableStateOf(false) }
-    var lastSearched by remember(searchable) { mutableStateOf("") }
+    // 官方搜索在 Repository 的 IO dispatcher 内完成，这里只消费一份结果。
+    var localHits by remember(searchable) { mutableStateOf<List<VodItem>>(emptyList()) }
+    var searching by remember(searchable) { mutableStateOf(false) }
     LaunchedEffect(searchable) {
-        if (searchable.isEmpty()) {
-            remote = emptyList(); remoteLoading = false
-            lastSearched = ""   // 清空后重输同一词也要重搜
+        if (searchable.isBlank()) {
+            localHits = emptyList()
+            searching = false
             return@LaunchedEffect
         }
-        remoteLoading = false
-        if (searchable == lastSearched) return@LaunchedEffect
-        if (searchable != voiceImmediateQuery) delay(250)
-        if (!isActive) return@LaunchedEffect
-        remoteLoading = true
+        searching = true
         try {
-            val found = Graph.live.searchRemote(searchable)
-            if (isActive) {
-                remote = found
-                lastSearched = searchable
-            }
+            localHits = Graph.repo.search(searchable)
         } finally {
-            if (isActive) remoteLoading = false
+            searching = false
         }
     }
-    // 版本化 SQLite 搜索在 Repository 的 IO dispatcher 执行；种子目录回退扫描在 Default 执行。
-    var localHits by remember(searchable) { mutableStateOf<List<VodItem>>(emptyList()) }
-    LaunchedEffect(searchable) {
-        localHits = if (searchable.isBlank()) emptyList()
-        else Graph.repo.search(searchable)
-    }
-    val results = remember(localHits, remote, debugFixtureItems) {
-        debugFixtureItems ?: mergeSearchResults(localHits, remote)
+    val results = remember(localHits, debugFixtureItems) {
+        debugFixtureItems ?: localHits
     }
 
     // 结果分类（需求④）：认 categoryId → 认不出才拉详情兜底（见 classifySearchResults）
@@ -526,7 +500,7 @@ fun SearchScreen(nav: NavController) {
             if (shown.isEmpty()) {
                 if (query.isNotBlank()) Text(
                     when {
-                        results.isEmpty() && remoteLoading -> "搜索中…"
+                        results.isEmpty() && searching -> "搜索中…"
                         results.isEmpty() -> "没有匹配的影片"
                         else -> "该分类暂无结果"
                     },

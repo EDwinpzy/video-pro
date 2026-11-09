@@ -225,8 +225,6 @@ fun FavoritesScreen(
                         },
                     )
                 }
-                // 需求⑥（2026-09-11）：会员信息并入「我的收藏」标题行靠右——旧版悬浮
-                // 右上与标题不同行；光标只能选中行尾「续费」两字（整行不可聚焦）
                 favHisItems(
                     s = s,
                     favItems = favItems,
@@ -249,7 +247,6 @@ fun FavoritesScreen(
         OtvHint(hint)
     }
 }
-
 @Composable
 private fun AccountSyncRow(
     session: DongpianAuthSession,
@@ -479,107 +476,7 @@ private fun HistoryVodCard(
     }
 }
 
-/**
- * 需求⑥（2026-09-11）：我的页会员信息——并入「我的收藏」标题行靠右的一行小字
- * （状态点+状态/套餐/到期/剩余），无背景框；**仅行尾动作可聚焦**
- * （旧版整行 dpadFocusable，光标落在整行上；现光标只套行尾动作），
- * OK 进会员页（激活/续费/兑换）。
- */
-@Composable
-private fun MemberInlineInfo(
-    s: Float,
-    renewFocus: FocusRequester? = null,
-    onRedeem: () -> Unit,
-) {
-    val st by com.qiubo.optimaltv.license.LicenseManager.state.collectAsStateWithLifecycle()
-    val d = (st as? com.qiubo.optimaltv.license.LicenseState.Activated)?.data
-    val activateAction = st is com.qiubo.optimaltv.license.LicenseState.NotActivated
-    val status: String
-    val statusColor: Color
-    val infoText: String
-    when {
-        st == null -> { status = "加载中…"; statusColor = OtvColors.White50; infoText = "" }
-        activateAction -> { status = "尚未开通"; statusColor = OtvColors.White50; infoText = "输入卡密可激活" }
-        d == null -> { status = "会员状态暂不可用"; statusColor = OtvColors.White50; infoText = "" }
-        d.expiryAt != null && com.qiubo.optimaltv.license.LicenseManager.effNow() >= d.expiryAt -> {
-            status = "会员已过期"; statusColor = Color(0xFFFF453A)
-            infoText = com.qiubo.optimaltv.ui.paywall.planDisplayName(d.plan) + " · 续费可用"
-        }
-        !com.qiubo.optimaltv.license.LicenseManager.isPremium() -> {
-            status = "等待联网校验"; statusColor = Color(0xFFFF9F0A); infoText = "联网后自动恢复"
-        }
-        d.expiryAt == null -> { status = "终身会员"; statusColor = Color(0xFF30D158); infoText = "终身 · 永久有效" }
-        else -> {
-            status = "会员有效"; statusColor = Color(0xFF30D158)
-            infoText = com.qiubo.optimaltv.ui.paywall.planDisplayName(d.plan) +
-                " · 到期 " + fmtDate(d.expiryAt) +
-                " · 剩余 ${com.qiubo.optimaltv.license.LicenseManager.daysLeft()} 天"
-        }
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(end = 86f.sx(s)),
-    ) {
-        Box(
-            Modifier
-                .size(14f.sx(s))
-                .background(statusColor, androidx.compose.foundation.shape.CircleShape),
-        )
-        Spacer(Modifier.width(12f.sx(s)))
-        Text(
-            buildString {
-                append(status)
-                if (infoText.isNotBlank()) append(" · ").append(infoText)
-            },
-            color = OtvColors.White50,
-            fontSize = 22f.sxs(s),
-            maxLines = 1,
-        )
-        // 行尾带下划线的会员操作入口；未开通时可直接进入激活页。
-        // 需求⑥（2026-09-11）：只有这两个字可被光标选中
-        // 2026-09-19 老板定版（第二轮）：选中效果**改为细白描边框**，去掉之前那套
-        // 「白底反色胶囊 + 放大 1.08 + 四周柔和外发光」——
-        // 老板原话「换成一个白边的框就好了，细边的框就好了，不用搞那么夸张浮夸」。
-        // 现在是：聚焦 = 1.5 设计px 白色圆角描边框 + 文字转白；未聚焦 = 半透明 hairline + 蓝字下划线。
-        // 之前那版光晕（6 圈同心描边模拟衰减）整块删除，连同它的 24 设计px 画布边距常量。
-        Spacer(Modifier.width(14f.sx(s)))
-        var renewFocused by remember { mutableStateOf(false) }
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .then(if (renewFocus != null) Modifier.focusRequester(renewFocus) else Modifier)
-                .dpadFocusable(
-                    scaleFocused = 1f,     // 不做放大：老板要「不夸张」，聚焦只换描边
-                    focusedBg = null,      // 背景自绘（未聚焦态是半透明胶囊）
-                    drawRing = false,      // 焦点环也自绘，统一到同一个 border 上
-                    onFocusedChange = { renewFocused = it },
-                ) { onRedeem() }
-                .clip(RoundedCornerShape(50))
-                .background(
-                    if (renewFocused) OtvColors.White.copy(alpha = 0.06f)   // 极淡填充，只用于垫住白字
-                    else Color(0x1FFFFFFF),
-                )
-                .border(
-                    if (renewFocused) 1.5f.sx(s) else 1f.sx(s),
-                    if (renewFocused) OtvColors.White else Color(0x33FFFFFF),
-                    RoundedCornerShape(50),
-                )
-                .padding(horizontal = 20f.sx(s), vertical = 9f.sx(s)),
-        ) {
-            Text(
-                if (activateAction) "激活" else "续费",
-                color = if (renewFocused) OtvColors.White else AccentBlue,
-                fontSize = 22f.sxs(s),
-                fontWeight = FontWeight.SemiBold,
-                // 聚焦态去掉下划线：白字 + 白框下再压一条下划线会脏
-                textDecoration = if (renewFocused) TextDecoration.None else TextDecoration.Underline,
-            )
-        }
-    }
-}
-
-/** 收藏+历史区块（我的页两种布局共用）：标题行 + 横滑卡行。titleTop=标题顶部留白（调用方按布局给）；
- *  memberRow 非空时与「我的收藏」标题同行右对齐（需求⑥：会员信息行并入标题行） */
+/** 收藏+历史区块（我的页两种布局共用）：标题行 + 横滑卡行。titleTop=标题顶部留白（调用方按布局给）。 */
 private fun androidx.compose.foundation.lazy.LazyListScope.favHisItems(
     s: Float,
     favItems: List<VodItem>,
@@ -590,7 +487,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.favHisItems(
     titleTop: Float,
     librarySyncing: Boolean,
     restoreKey: String? = null,
-    memberRow: (@Composable () -> Unit)? = null,
 ) {
     val hasFav = favItems.isNotEmpty()
     val hasHis = history.isNotEmpty()
@@ -604,8 +500,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.favHisItems(
                 "我的收藏", fontSize = 30f.sxs(s), fontWeight = FontWeight.SemiBold,
                 color = OtvColors.White.copy(alpha = 0.92f),
             )
-            Spacer(Modifier.weight(1f))
-            memberRow?.invoke()
         }
     }
     item(key = "fav-row") {
@@ -735,6 +629,3 @@ private fun androidx.compose.foundation.lazy.LazyListScope.favHisItems(
         }
     }
 }
-
-private fun fmtDate(ms: Long): String =
-    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).format(java.util.Date(ms))

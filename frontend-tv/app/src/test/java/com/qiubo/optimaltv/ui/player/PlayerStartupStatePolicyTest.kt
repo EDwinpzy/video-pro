@@ -5,9 +5,9 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlayerStartupStatePolicyTest {
-    @Test fun footballStartsInLiveModeBeforeAnyNetworkRequest() {
-        val state = PlayerStartupStatePolicy.initial("live:129478", 0)
-        assertTrue(state.isLive)
+    @Test fun officialTitleStartsInVodModeBeforeAnyNetworkRequest() {
+        val state = PlayerStartupStatePolicy.initial("dongpian:129478", 0)
+        assertFalse(state.isLive)
         assertTrue(state.sourceResolving)
         assertFalse(state.controlsVisible)
         assertTrue(state.lines.isEmpty())
@@ -15,14 +15,14 @@ class PlayerStartupStatePolicyTest {
     }
 
     @Test fun vodKeepsItsEpisodeAndPointPlaybackControls() {
-        val state = PlayerStartupStatePolicy.initial("douban:37457082", 2)
+        val state = PlayerStartupStatePolicy.initial("dongpian:37457082", 2)
         assertFalse(state.isLive)
         assertTrue(state.sourceResolving)
         assertEquals(2, state.epIndex)
     }
 
     @Test fun aTitleContainingLiveDoesNotSelectFootballMode() {
-        assertFalse(PlayerStartupStatePolicy.initial("hhkan:live", 0).isLive)
+        assertFalse(PlayerStartupStatePolicy.initial("dongpian:live", 0).isLive)
     }
 
     @Test fun officialDetailRouteSkipsLegacyBootstrapOnly() {

@@ -1,8 +1,8 @@
 # Repository layout and release authority
 
 This page is the authoritative map for the whole repository. The current TV
-release is [`frontend-tv`](../frontend-tv), version `0.3.3`
-(`versionCode 9`), with package ID `com.dongpiandi.videopro`.
+release is [`frontend-tv`](../frontend-tv), version `1.0.0`
+(`versionCode 10`), with package ID `com.dongpiandi.videopro`.
 
 ## Release boundary
 
@@ -60,27 +60,16 @@ The following are intentionally untracked:
 Do not clean the working tree by committing generated files or unrelated
 in-progress work.
 
-## Migration certificate
+## Network trust policy
 
-`frontend-tv/app/src/main/res/raw/mytv_migration_ca.crt` is a **public**
-self-signed migration root certificate (`CN=My TV Migration CA`). The
-repository copy contains no private key. It is an Android resource and is also
-materialized by the embedded backend for the controlled migration endpoint.
+The official TV application has no private certificate or migration origin.
+It trusts only the platform CA store and uses the public official HTTPS
+service. Debug and release variants do not select a separate IP origin, and a
+release artifact must not contain the former migration CA or its IP address.
 
-The certificate is trusted:
-
-- in debug builds for the local migration origin; and
-- in a release build only when both
-  `-PallowIpReleaseOrigin=true` and the exact migration origin are explicitly
-  selected.
-
-A normal production release must use the accepted public domain and public CA
-chain. Private keys remain outside the repository and must never be committed,
-printed, or copied into documentation.
-
-The `.crt` extension records that this resource is a certificate, not a
-private-key container. Re-verify that the file remains public and contains no
-private key before changing it or its trust scope.
+Keep `mytv_migration_ca`, `allowIpReleaseOrigin`, and IP-based API overrides
+out of the official `frontend-tv` build. Any future private trust anchor needs
+a new security review and must never be copied into Git with a private key.
 
 ## Source-of-truth map
 
@@ -89,6 +78,7 @@ private key before changing it or its trust scope.
 | Current TV version and package | `frontend-tv/app/build.gradle` |
 | Official TV build and tests | `frontend-tv/README.md` |
 | Product behavior and retained features | `frontend-tv/README.md` |
+| Dongpian-only scope and retained optimisations | `docs/tv-dongpian-only-audit.md` |
 | Cross-version user-facing history | `RELEASE_NOTES.md` |
 | Version, tag, and release policy | `docs/versioning.md` |
 | Inherited KMP architecture | `docs/architecture.md` |

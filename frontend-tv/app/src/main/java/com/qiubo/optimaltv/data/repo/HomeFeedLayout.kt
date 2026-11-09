@@ -1,7 +1,7 @@
 package com.qiubo.optimaltv.data.repo
 
 import com.qiubo.optimaltv.data.model.VodItem
-import com.qiubo.optimaltv.data.source.HhkanSource.ChannelSection
+import com.qiubo.optimaltv.data.model.ChannelSection
 
 internal object HomeFeedLayout {
     fun titles(category: String): List<String> = listOf("大家都在看") + when (category) {

@@ -7,6 +7,9 @@
 > 文档性质：低配机优化方案与当前验证记录。  
 > 交付边界：本文严格区分“代码已实现”“构建/单元测试通过”和“S621 实机验收通过”，
 > 未完成的实机项目不会被写成已通过。
+>
+> 2026-11-09 官方后端-only 清理说明：直播、公告、会员/激活页面已从正式应用移除。
+> 本文相关章节和文件列表仅保留为历史性能记录，不再代表 `1.0.0` 当前页面。
 
 ## 结论摘要
 
@@ -108,13 +111,12 @@ performance tier=CONSTRAINED maxHeapMb=160 cpuCount=4 lowRamDevice=false
 - 低配机向 Compose 注入 `TvShortBringIntoViewSpec`，页面换行补滚使用 120 ms 的 `tween`，避免 0 帧瞬移造成“整页跳一下”。
 - 自定义焦点引擎的 `ensureVisible` 走同一套短滚动，不再直接调用瞬时 `scrollBy`。
 - 从下方进入“继续播放”或“立即观看”时，页面仍直接回到顶部并落焦；该路径是明确回顶，不使用缓动。
-- 首页、直播页等显式回顶逻辑统一使用 `scrollToItem(0)`，避免 `animateScrollToItem`。
+- 首页等显式回顶逻辑统一使用 `scrollToItem(0)`，避免 `animateScrollToItem`。
 
 相关文件：
 
 - `app/src/main/java/com/qiubo/optimaltv/MainActivity.kt`
 - `app/src/main/java/com/qiubo/optimaltv/ui/home/HomeScreen.kt`
-- `app/src/main/java/com/qiubo/optimaltv/ui/live/LiveScreen.kt`
 
 ### 4.4 焦点反馈
 
@@ -142,15 +144,11 @@ performance tier=CONSTRAINED maxHeapMb=160 cpuCount=4 lowRamDevice=false
   详见 7.1。
 - 每个 `TabBar` 实例用独立 owner 持有顶部 chrome 状态。新页进入时会重新取得所有权，
   旧页销毁只能释放自己持有的状态，不能把新页刚设置的阈值和显隐状态清空。
-- 公告进入、退出和 20 秒进度条动画关闭；自动收起计时仍保留。
-- 会员页、激活页的入场、淡入、二维码过渡和光标脉冲关闭。
+- 公告、会员/激活页面已随官方后端-only 清理移除；其历史动效优化不再适用。
 
 相关文件：
 
 - `app/src/main/java/com/qiubo/optimaltv/ui/components/TabBar.kt`
-- `app/src/main/java/com/qiubo/optimaltv/ui/components/AnnouncementBanner.kt`
-- `app/src/main/java/com/qiubo/optimaltv/ui/paywall/PaywallScreen.kt`
-- `app/src/main/java/com/qiubo/optimaltv/ui/paywall/ActivateScreen.kt`
 
 ### 4.6 图片与网络
 
@@ -183,9 +181,9 @@ performance tier=CONSTRAINED maxHeapMb=160 cpuCount=4 lowRamDevice=false
 
 覆盖页面：
 
-- 首页、搜索、我的、详情、直播、电视直播
+- 首页、搜索、我的、详情
 - 播放器及播放器侧栏
-- 登录门、会员页、激活页、片单/全部页
+- 登录门、片单/全部页
 
 相关文件：
 
@@ -204,8 +202,6 @@ performance tier=CONSTRAINED maxHeapMb=160 cpuCount=4 lowRamDevice=false
 | 详情 | 关闭页面动效与语义导出，按钮和选集使用直接焦点反馈 | 收藏、续播、从头看、选集和分页 |
 | 播放器 | 关闭 scrim 淡入淡出、标题模糊阴影和侧栏阴影 | 播放、暂停、快进、倍速、弹幕、音轨、字幕 |
 | 播放器侧栏 | 8 组颜色动画改直接切色；低配进度刷新量化为 10 秒；固定头部高度 | 选集、播放设置、片源三个标签，全部条目可达 |
-| 直播 | 关闭 hero 内容切换动画；进入立即观看按钮直接回顶 | 比赛切换、筛选、进入直播 |
-| 会员/激活 | 关闭入场、二维码淡入和光标脉冲 | 激活码输入、二维码和遥控器操作 |
 | 登录门 | 关闭焦点缩放并裁剪语义树 | 账号输入、登录、退出 |
 
 ## 6. 播放器侧栏专项
@@ -589,7 +585,6 @@ versionName=0.2.0 versionCode=2
 | `TvInteractionMotion.kt` | 颜色动画、焦点滚动和语义树统一策略 |
 | `TvDirectionKeyHandler.kt` | 方向键按下/松开跟踪，向 `OtvNav` 提供松手判定 |
 | `TabBar.kt` | 低配关闭顶栏动效、24 ms 松手后 settle 和 chrome owner 接入 |
-| `AnnouncementBanner.kt` | 公告动画关闭 |
 | `RemotePoster.kt` | 海报请求尺寸、硬件位图、无淡入、候选回退和占位 |
 | `HomeScreen.kt` | 首页海报、标题阴影、回顶、栏目头/海报行拆分和 `catalogById` 缓存 |
 | `HomeRecommendationRow.kt` | 海报行组件、推荐列缓存和低配单行策略 |
@@ -597,12 +592,9 @@ versionName=0.2.0 versionCode=2
 | `SearchScreen.kt` | 搜索页语义裁剪与瞬时滚动 |
 | `FavoritesScreen.kt` | 我的页语义裁剪、收藏映射缓存 |
 | `DetailScreen.kt` | 详情页语义裁剪与列表滚动 |
-| `LiveScreen.kt` | 直播 hero 动画和回顶 |
-| `TvScreen.kt` | 电视直播页语义裁剪 |
 | `PlayerScreen.kt` | 播放器 scrim、标题阴影 |
 | `PlayerClassicSidebar.kt` | 侧栏阴影/动画、绘制焦点、语义裁剪，以及影片介绍区与简介高度布局 |
 | `PlayerViewModel.kt` | 侧栏打开时进度刷新量化 |
-| `PaywallScreen.kt` / `ActivateScreen.kt` | 会员页和激活页动效关闭 |
 | `DongpianLoginGate.kt` | 登录页语义裁剪 |
 
 ## 12. 回退与风险

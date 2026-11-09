@@ -55,7 +55,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -92,10 +95,13 @@ private val SidebarSmallShape = RoundedCornerShape(9.dp)
 private val SidebarChipShape = RoundedCornerShape(8.dp)
 private val SidebarSourceShape = RoundedCornerShape(10.dp)
 
-private const val SidebarEpisodeColumns = 6
 private const val SidebarEpisodePageColumns = 3
 private const val SidebarSourceColumns = 2
 private const val SidebarNavGroup = "player-classic-sidebar"
+private val SidebarContentWidth = 504.dp
+private val SidebarEpisodeChipHorizontalPadding = 8.dp
+private val SidebarEpisodeChipSpacing = 8.dp
+private val SidebarEpisodeMinCardWidth = 56.dp
 
 /**
  * Low-tier focus treatment: the state is read in the draw phase, so moving the
@@ -171,11 +177,27 @@ private data class SidebarSettingRow(
     val options: List<String>,
     val selectedIndex: Int,
     val fixedChipWidth: Dp? = null,
+    val compact: Boolean = false,
     val onSelect: (Int) -> Unit,
 )
 
 private fun skipValueLabel(seconds: Int): String =
     if (seconds <= 0) "关闭" else "${seconds}秒"
+
+private fun skipOverviewLabel(ui: PlayerUiState): String =
+    when {
+        ui.smartSkipEnabled -> "已开启 · 智能"
+        ui.skipIntroSeconds > 0 || ui.skipOutroSeconds > 0 -> "已开启 · 手动"
+        else -> "已关闭"
+    }
+
+private fun skipSubmenuHint(ui: PlayerUiState): String =
+    when {
+        ui.smartSkipEnabled && ui.officialSkipPreset != null ->
+            "已识别官方片头片尾，未命中时使用下方兜底时长。按返回键回到播放设置。"
+        ui.smartSkipEnabled -> "暂未识别官方分段，将使用下方兜底时长。按返回键回到播放设置。"
+        else -> "自动识别已关闭，仅使用下方兜底时长。按返回键回到播放设置。"
+    }
 
 /**
  * Accepted playback sidebar: fixed film header, three tabs, compact settings and
@@ -186,6 +208,8 @@ internal fun ClassicMorePanel(
     ui: PlayerUiState,
     vm: PlayerViewModel,
     onPickEpisode: (Int) -> Unit,
+    skipSubmenuOpen: Boolean,
+    onSkipSubmenuOpenChange: (Boolean) -> Unit,
 ) {
     val tabs =
         remember(ui.isMovie, ui.epCount) {
@@ -214,8 +238,56 @@ internal fun ClassicMorePanel(
         remember(ui.epCount, episodePage) {
             SidebarEpisodePagePolicy.visibleRange(ui.epCount, episodePage).toList()
         }
-    val episodeRows = remember(pageEpisodes) { pageEpisodes.chunked(SidebarEpisodeColumns) }
+    val episodeChipLabels = remember(ui.epNames, ui.epCount) {
+        List(ui.epCount.coerceAtLeast(0)) { index ->
+            episodeEntryCustomName(index, ui.epNames.getOrNull(index))
+                ?: (index + 1).toString().padStart(2, '0')
+        }
+    }
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val episodeCardLayouts = remember(episodeChipLabels, density, textMeasurer) {
+        val chipStyle =
+            TextStyle(
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.4.sp,
+            )
+        val horizontalPaddingPx =
+            with(density) { (SidebarEpisodeChipHorizontalPadding * 2).roundToPx() }
+        val minCardWidthPx = with(density) { SidebarEpisodeMinCardWidth.roundToPx() }
+        episodeChipLabels.mapIndexed { index, label ->
+            val textWidthPx =
+                textMeasurer.measure(
+                    text = AnnotatedString(label),
+                    style = chipStyle,
+                    overflow = TextOverflow.Clip,
+                    softWrap = false,
+                    maxLines = 1,
+                ).size.width
+            SidebarEpisodeCardLayout(
+                episode = index,
+                widthPx = maxOf(textWidthPx + horizontalPaddingPx, minCardWidthPx),
+            )
+        }
+    }
+    val episodeRows = remember(pageEpisodes, episodeCardLayouts, density) {
+        SidebarEpisodeGridPolicy.packRows(
+            cards = pageEpisodes.map(episodeCardLayouts::get),
+            availableWidthPx = with(density) { SidebarContentWidth.roundToPx() },
+            spacingPx = with(density) { SidebarEpisodeChipSpacing.roundToPx() },
+        )
+    }
     val episodeRowOffset = episodePageRows.size
+    val episodeFocusPositions = remember(episodeRows, episodeRowOffset) {
+        buildMap {
+            episodeRows.forEachIndexed { row, cards ->
+                cards.forEachIndexed { column, card ->
+                    put(card.episode, SidebarStart(episodeRowOffset + row, column))
+                }
+            }
+        }
+    }
     val episodeKeys = remember(ui.epKeys, ui.epNames, ui.epCount) {
         ui.epKeys.takeIf { it.size == ui.epCount }
             ?: List(ui.epCount.coerceAtLeast(0)) { index -> "${ui.epNames.getOrNull(index).orEmpty()}\u0000$index" }
@@ -238,25 +310,14 @@ internal fun ClassicMorePanel(
     var skipDraft by remember { mutableStateOf("") }
     var pendingStart by remember { mutableStateOf<SidebarStart?>(null) }
     var contentRequest by remember { mutableIntStateOf(0) }
-    val settingRows =
+    val mainSettingRows =
         listOf(
             SidebarSettingRow(
-                label = "片头跳过",
-                options = listOf(skipValueLabel(ui.skipIntroSeconds)),
+                label = "跳过片头片尾",
+                options = listOf(skipOverviewLabel(ui)),
                 selectedIndex = 0,
-                onSelect = {
-                    editingSkip = SkipEditTarget.Intro
-                    skipDraft = ui.skipIntroSeconds.toString()
-                },
-            ),
-            SidebarSettingRow(
-                label = "片尾跳过",
-                options = listOf(skipValueLabel(ui.skipOutroSeconds)),
-                selectedIndex = 0,
-                onSelect = {
-                    editingSkip = SkipEditTarget.Outro
-                    skipDraft = ui.skipOutroSeconds.toString()
-                },
+                compact = true,
+                onSelect = { onSkipSubmenuOpenChange(true) },
             ),
             SidebarSettingRow(
                 label = "播放倍速",
@@ -307,6 +368,40 @@ internal fun ClassicMorePanel(
                 onSelect = { vm.setDanmakuScrollSpeed(PlayerViewModel.DANMAKU_SCROLL_SPEED_STEPS[it]) },
             ),
         )
+    val skipSettingRows =
+        listOf(
+            SidebarSettingRow(
+                label = "智能识别",
+                options = listOf("开启", "关闭"),
+                selectedIndex = if (ui.smartSkipEnabled) 0 else 1,
+                fixedChipWidth = 84.dp,
+                compact = true,
+                onSelect = { column -> vm.setSmartSkipEnabled(column == 0) },
+            ),
+            SidebarSettingRow(
+                label = "片头兜底",
+                options = listOf(skipValueLabel(ui.skipIntroSeconds)),
+                selectedIndex = 0,
+                fixedChipWidth = 96.dp,
+                compact = true,
+                onSelect = {
+                    editingSkip = SkipEditTarget.Intro
+                    skipDraft = ui.skipIntroSeconds.toString()
+                },
+            ),
+            SidebarSettingRow(
+                label = "片尾兜底",
+                options = listOf(skipValueLabel(ui.skipOutroSeconds)),
+                selectedIndex = 0,
+                fixedChipWidth = 96.dp,
+                compact = true,
+                onSelect = {
+                    editingSkip = SkipEditTarget.Outro
+                    skipDraft = ui.skipOutroSeconds.toString()
+                },
+            ),
+        )
+    val settingRows = if (skipSubmenuOpen) skipSettingRows else mainSettingRows
 
     val contentRows =
         when {
@@ -322,21 +417,13 @@ internal fun ClassicMorePanel(
 
     fun initialStart(tab: SidebarTab): SidebarStart =
         when (tab) {
-            SidebarTab.Episodes -> {
-                val pageStart =
-                    SidebarEpisodePagePolicy.normalizePage(episodePage, ui.epCount) *
-                        SidebarEpisodePagePolicy.PAGE_SIZE
-                val localIndex = ui.epIndex - pageStart
-                if (localIndex in pageEpisodes.indices) {
-                    SidebarStart(
-                        row = episodeRowOffset + localIndex / SidebarEpisodeColumns,
-                        column = localIndex % SidebarEpisodeColumns,
-                    )
+            SidebarTab.Episodes -> episodeFocusPositions[ui.epIndex] ?: SidebarStart(episodeRowOffset, 0)
+            SidebarTab.Settings ->
+                if (skipSubmenuOpen) {
+                    SidebarStart(row = 0, column = if (ui.smartSkipEnabled) 0 else 1)
                 } else {
-                    SidebarStart(row = episodeRowOffset, column = 0)
+                    SidebarStart(row = 0, column = 0)
                 }
-            }
-            SidebarTab.Settings -> SidebarStart(row = 0, column = 2)
             SidebarTab.Sources ->
                 SidebarStart(
                     row = ui.activeLine / SidebarSourceColumns,
@@ -364,6 +451,7 @@ internal fun ClassicMorePanel(
     fun moveTab(tab: SidebarTab) {
         editingSkip = null
         skipDraft = ""
+        onSkipSubmenuOpenChange(false)
         selectedTab = tab
         if (tab == SidebarTab.Episodes) {
             episodePage = SidebarEpisodePagePolicy.pageForEpisode(ui.epIndex, ui.epCount)
@@ -400,10 +488,23 @@ internal fun ClassicMorePanel(
         }
         editingSkip = null
         skipDraft = ""
-        pendingStart = SidebarStart(row = if (target == SkipEditTarget.Intro) 0 else 1, column = 0)
+        pendingStart = SidebarStart(row = if (target == SkipEditTarget.Intro) 1 else 2, column = 0)
         contentRequest++
     }
 
+    var previousSkipSubmenuOpen by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(skipSubmenuOpen) {
+        val previous = previousSkipSubmenuOpen
+        previousSkipSubmenuOpen = skipSubmenuOpen
+        if (!skipSubmenuOpen) {
+            editingSkip = null
+            skipDraft = ""
+        }
+        if (previous != null && previous != skipSubmenuOpen && selectedTab == SidebarTab.Settings) {
+            pendingStart = initialStart(SidebarTab.Settings)
+            contentRequest++
+        }
+    }
     LaunchedEffect(Unit) {
         requestContentFocus(selectedTab)
     }
@@ -416,13 +517,8 @@ internal fun ClassicMorePanel(
             episodePage = targetPage
             return@LaunchedEffect
         }
-        val pageStart = episodePage * SidebarEpisodePagePolicy.PAGE_SIZE
-        val localIndex = request.index - pageStart
-        if (localIndex !in pageEpisodes.indices) return@LaunchedEffect
-        contentFocus.focusInitial(
-            episodeRowOffset + localIndex / SidebarEpisodeColumns,
-            localIndex % SidebarEpisodeColumns,
-        )
+        val position = episodeFocusPositions[request.index] ?: return@LaunchedEffect
+        contentFocus.focusInitial(position.row, position.column)
     }
     LaunchedEffect(contentRequest, contentRows) {
         val start = pendingStart ?: return@LaunchedEffect
@@ -505,6 +601,7 @@ internal fun ClassicMorePanel(
                     onSelect = {
                         editingSkip = null
                         skipDraft = ""
+                        onSkipSubmenuOpenChange(false)
                         selectedTab = it
                         if (it == SidebarTab.Episodes) {
                             episodePage = SidebarEpisodePagePolicy.pageForEpisode(ui.epIndex, ui.epCount)
@@ -518,7 +615,7 @@ internal fun ClassicMorePanel(
                     when (selectedTab) {
                         SidebarTab.Episodes ->
                             SidebarEpisodesContent(
-                                episodes = pageEpisodes,
+                                cardRows = episodeRows,
                                 episodeNames = ui.epNames,
                                 episodeKeys = episodeKeys,
                                 pageRows = episodePageRows,
@@ -545,6 +642,8 @@ internal fun ClassicMorePanel(
                                 SidebarSettingsContent(
                                     rows = settingRows,
                                     focus = contentFocus,
+                                    title = if (skipSubmenuOpen) "跳过片头片尾" else "播放设置",
+                                    hint = if (skipSubmenuOpen) skipSubmenuHint(ui) else null,
                                     onNavigate = ::navigateContent,
                                 )
                             }
@@ -823,7 +922,7 @@ private fun SidebarTabBar(
 @Composable
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 private fun SidebarEpisodesContent(
-    episodes: List<Int>,
+    cardRows: List<List<SidebarEpisodeCardLayout>>,
     episodeNames: List<String>,
     episodeKeys: List<String>,
     pageRows: List<List<Int>>,
@@ -838,6 +937,7 @@ private fun SidebarEpisodesContent(
     onNavigate: (Int, Int, Int) -> Boolean,
 ) {
     val scroll = rememberScrollState()
+    val density = LocalDensity.current
     val hasNamedEntries = remember(episodeNames) {
         episodeNames.withIndex().any { episodeEntryCustomName(it.index, it.value) != null }
     }
@@ -885,13 +985,14 @@ private fun SidebarEpisodesContent(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            episodes.chunked(SidebarEpisodeColumns).forEachIndexed { row, rowEpisodes ->
+            cardRows.forEachIndexed { row, rowCards ->
                 val contentRow = episodeRowOffset + row
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    rowEpisodes.forEachIndexed { column, episode ->
+                    rowCards.forEachIndexed { column, card ->
+                        val episode = card.episode
                         val identity = episodeKeys[episode]
                         key(identity) {
                             SidebarEpisodeChip(
@@ -904,7 +1005,7 @@ private fun SidebarEpisodesContent(
                                 column = column,
                                 modifier =
                                     Modifier
-                                        .weight(1f)
+                                        .width(with(density) { card.widthPx.toDp() })
                                         .height(42.dp)
                                         .then(focus.modifier(contentRow, column)),
                                 onNavigate = onNavigate,
@@ -912,9 +1013,7 @@ private fun SidebarEpisodesContent(
                             )
                         }
                     }
-                    repeat(SidebarEpisodeColumns - rowEpisodes.size) {
-                        Spacer(Modifier.weight(1f))
-                    }
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -1124,7 +1223,9 @@ private fun SidebarEpisodeChip(
             letterSpacing = 0.4.sp,
             textAlign = TextAlign.Center,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.padding(horizontal = SidebarEpisodeChipHorizontalPadding),
         )
         if (active) {
             Box(
@@ -1145,10 +1246,21 @@ private fun SidebarEpisodeChip(
 private fun SidebarSettingsContent(
     rows: List<SidebarSettingRow>,
     focus: PlayerPanelFocus,
+    title: String,
+    hint: String?,
     onNavigate: (Int, Int, Int) -> Boolean,
 ) {
     Column(Modifier.fillMaxSize()) {
-        SidebarSectionHeading("播放设置")
+        SidebarSectionHeading(title)
+        if (hint != null) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = hint,
+                color = SidebarMuted,
+                fontSize = 9.5.sp,
+                lineHeight = 13.sp,
+            )
+        }
         Spacer(Modifier.height(5.dp))
         rows.forEachIndexed { rowIndex, row ->
             Row(
@@ -1164,6 +1276,12 @@ private fun SidebarSettingsContent(
                 Spacer(Modifier.width(8.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     row.options.forEachIndexed { column, option ->
+                        val widthModifier =
+                            when {
+                                row.fixedChipWidth != null -> Modifier.width(row.fixedChipWidth)
+                                row.compact -> Modifier
+                                else -> Modifier.weight(1f)
+                            }
                         SidebarSettingChip(
                             text = option,
                             active = row.selectedIndex == column,
@@ -1172,10 +1290,7 @@ private fun SidebarSettingsContent(
                             column = column,
                             modifier =
                                 Modifier
-                                    .then(
-                                        row.fixedChipWidth?.let { Modifier.width(it) }
-                                            ?: Modifier.weight(1f),
-                                    )
+                                    .then(widthModifier)
                                     .height(30.dp)
                                     .then(focus.modifier(rowIndex, column)),
                             onNavigate = onNavigate,
@@ -1337,7 +1452,8 @@ private fun SidebarSettingChip(
                         cornerRadius = 8.dp,
                     )
                 },
-            ),
+            )
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

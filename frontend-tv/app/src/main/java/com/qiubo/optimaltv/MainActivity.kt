@@ -35,7 +35,6 @@ import com.qiubo.optimaltv.ui.components.HomeTabState
 import com.qiubo.optimaltv.ui.detail.DetailScreen
 import com.qiubo.optimaltv.ui.favorites.FavoritesScreen
 import com.qiubo.optimaltv.ui.home.VodScreen
-import com.qiubo.optimaltv.ui.live.LiveScreen
 import com.qiubo.optimaltv.ui.player.PlayerScreen
 import com.qiubo.optimaltv.ui.search.SearchScreen
 import com.qiubo.optimaltv.ui.theme.OptimalTvTheme
@@ -155,37 +154,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        // v1.17 调试注入激活码（模拟器键盘注键丢键，测试用；码本身仍走完整验证链路：
-        // 云端查表+设备绑定+本地 ECDSA 验签，无任何安全豁免；公测版 debug 构建限定）
-        if (BuildConfig.DEBUG) {
-            intent?.getStringExtra("otvDebugLicense")?.takeIf { it.isNotBlank() }?.let { code ->
-                com.qiubo.optimaltv.OtvLog.i("debug-nav（intent extra）license=${code.take(4)}***")
-                Graph.appScope.launch {
-                    val r = com.qiubo.optimaltv.license.LicenseManager.activate(code)
-                    com.qiubo.optimaltv.OtvLog.i("debug license activate → $r")
-                }
-            }
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        // 冷启动时 Android 可能因后台启动限制拒绝一次 startService；前台恢复后重试，
-        // 避免内嵌后端未监听 8090 导致足球列表/直播一起不可用。
-        BackendService.ensure(this)
         com.qiubo.optimaltv.lifecycle.AppLifecycleManager.onForeground()
         com.qiubo.optimaltv.OtvLog.i("activity ON_RESUME（窗口可见）")
-        // v1.20 热更自动重启：后台完成下载的更新在回前台时立即生效
-        com.qiubo.optimaltv.hotupdate.HotUpdateManager.onForegroundChanged(true)
-        com.qiubo.optimaltv.announcement.AnnouncementManager.onForegroundChanged(true)
     }
 
     override fun onPause() {
         com.qiubo.optimaltv.lifecycle.AppLifecycleManager.onBackground()
         super.onPause()
         com.qiubo.optimaltv.OtvLog.i("activity ON_PAUSE")
-        com.qiubo.optimaltv.announcement.AnnouncementManager.onForegroundChanged(false)
-        com.qiubo.optimaltv.hotupdate.HotUpdateManager.onForegroundChanged(false)
     }
     override fun onStop() {
         super.onStop()
@@ -322,8 +302,8 @@ private fun AppRoot(
         Graph.repo.refresh()
     }
 
-    // 调试直达页（2026-09-19）：debug 构建下可用 adb 直接落在指定二级页，
-    // 便于对会员页/激活页/我的页做版式截图与回归（release 无写入方，恒为 null）。
+    // 调试直达页（2026-09-19）：debug 构建下可用 adb 直接落在指定页面，
+    // 便于对首页栏目、搜索和我的页做版式截图与回归（release 无写入方，恒为 null）。
     // adb shell am start -n <pkg>/com.qiubo.optimaltv.MainActivity --es otvDebugRoute favorites
     val debugRoute = if (com.qiubo.optimaltv.BuildConfig.DEBUG) {
         when (val requested = DebugNavBus.pendingRoute) {
@@ -342,7 +322,6 @@ private fun AppRoot(
         debugHomeTab?.let(HomeTabState::select)
     }
 
-    // v1.20 全局浮层：运营公告（顶部半透明悬浮窗）+ 非强更提案弹窗 + 下载进度层
     Box(Modifier.fillMaxSize()) {
         NavHost(
             navController = nav,
@@ -379,13 +358,7 @@ private fun AppRoot(
                 }
             },
         ) {
-            composable("live") { LiveScreen(nav) }
-
             composable(HOME_ROUTE) { VodScreen(nav) }
-
-        // 电视直播页（v1.13：公开 IPTV 源原生直连，紧随影视之后）
-        composable("tv") { com.qiubo.optimaltv.ui.tv.TvScreen(nav) }
-
 
         composable("me") { FavoritesScreen(nav, session, onLogout) }
 
@@ -426,8 +399,5 @@ private fun AppRoot(
         composable("search") { SearchScreen(nav) }
 
         }
-        // 全局浮层（最顶层，非模态——公告悬浮窗不拦内容导航）
-        // 后端热更已改为后台静默自动更新，不再有热更弹窗/进度层
-        com.qiubo.optimaltv.ui.components.AnnouncementBanner()
     }
 }

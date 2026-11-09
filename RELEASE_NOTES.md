@@ -1,5 +1,24 @@
 # Release Notes
 
+## 1.0.0 (Video Pro TV)
+
+- Make the official TV app Dongpian-only: account, home feeds, catalogue,
+  search, details, favourites, history, playback tickets, line resolution, and
+  danmaku all use `https://ai.dongpian20.com`.
+- Remove the embedded Python backend, hot-update/announcement services,
+  licensing/activation flows, live/IPTV/football/hhkan sources, the old
+  metadata catalogue, and the private migration CA and IP origin.
+- Keep the TV and low-tier optimisations from `0.3.1`–`0.3.3`, including the
+  Media3 queue cap, selected-engine recovery, episode prefetch, focus-column
+  clamping, danmaku memory limits, performance-profile tuning, and smart skip.
+- Enable smart intro/outro skipping by default, fold its three settings into one
+  compact nested playback menu, and measure each episode card from its title so
+  dated episodes pack into rows without wrapping or ellipses.
+- Keep continuous same-line retry for stalls and buffering, but automatically
+  move to another official line after two hard line failures.
+- Build the `1.0.0` (`versionCode 10`) signed TV APK from `frontend-tv` only;
+  the root `app-tv` KMP tree remains experimental and is not a release target.
+
 ## 0.3.3 (Video Pro TV)
 
 - Cap Media3's sample queue at 48 MB and stop letting the 120s duration target override the byte limit. HPROF showed 1,603 sample allocations (~104 MB) on the 160 MB-heap S621, ending in `OutOfMemoryError` during episode switches and danmaku loads.

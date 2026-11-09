@@ -33,10 +33,10 @@ keystore.properties
 *.dmp
 *.hprof
 *.zip
-!/frontend-tv/app/src/main/assets/backend/python-backend.zip
 
 # Local QA captures, tooling and diagnostics
 # (personal entries are better kept in .git/info/exclude)
+/device-*.png
 /.qa-*
 /frontend-tv/voice-helper/src/debug/assets/dictation_zh_16k.pcm
 /.superpowers/

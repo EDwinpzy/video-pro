@@ -1,7 +1,7 @@
 # AGENTS.md
 
 > **Official TV app: `frontend-tv/` only.** It is the sole release target
-> (`0.3.3`, `versionCode 9`, `com.dongpiandi.videopro`). Root `app-tv` /
+> (`1.0.0`, `versionCode 10`, `com.dongpiandi.videopro`). Root `app-tv` /
 > `design-tv` / `dongpian-data` are experimental reference code: never version,
 > build for distribution, or publish them. Read `docs/repository-layout.md`
 > before touching TV source or version fields.

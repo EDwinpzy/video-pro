@@ -190,13 +190,23 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
     // 菜单隐藏 → 2.5s 内两次返回退出（首次提示）
     val backHint = remember { mutableStateOf<String?>(null) }
     var lastBackAt by remember { mutableLongStateOf(0L) }
+    var skipSubmenuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(ui.panel) {
+        if (ui.panel != Panel.MORE) skipSubmenuOpen = false
+    }
     LaunchedEffect(backHint.value) {
         if (backHint.value != null) { kotlinx.coroutines.delay(2500); backHint.value = null }
     }
     fun onBackPressed() {
         com.qiubo.optimaltv.OtvLog.i("player onBackPressed: panel=${ui.panel} src=${ui.srcPickerVisible} ctl=${ui.controlsVisible} fatal=${ui.fatalMsg != null} hint=${backHint.value != null}")
         when {
-            ui.panel != Panel.NONE -> vm.setPanel(Panel.NONE)
+            ui.panel == Panel.MORE && skipSubmenuOpen -> {
+                skipSubmenuOpen = false
+            }
+            ui.panel != Panel.NONE -> {
+                skipSubmenuOpen = false
+                vm.setPanel(Panel.NONE)
+            }
             ui.srcPickerVisible -> vm.hideSrcPicker()    // 直播：先收信号源条（需求 足球#14；错误态开条时 BACK 也先收条）
             ui.fatalMsg != null -> nav.popBackStack()    // 错误兜底态：BACK 直接返回上一页
             // v1.21 乱跑修复：收控制条的同时挂「再按退出」提示并入双击窗口——
@@ -507,6 +517,8 @@ fun PlayerScreen(nav: NavController, vodIdArg: String, epIndex: Int, resumeMs: L
                 onPickEpisode = { i ->
                     vm.switchEpisode(i)
                 },
+                skipSubmenuOpen = skipSubmenuOpen,
+                onSkipSubmenuOpenChange = { skipSubmenuOpen = it },
             )
         }
 
