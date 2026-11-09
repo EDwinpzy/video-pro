@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
 import com.qiubo.optimaltv.BuildConfig
 import com.qiubo.optimaltv.Graph
+import com.qiubo.optimaltv.OtvLog
 import com.qiubo.optimaltv.R
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.ui.components.CARD_FOCUS_SCALE
@@ -65,6 +66,7 @@ import com.qiubo.optimaltv.ui.theme.rememberUiScale
 import com.qiubo.optimaltv.ui.theme.sx
 import com.qiubo.optimaltv.ui.theme.sxs
 import com.qiubo.optimaltv.voice.VoiceSearchBus
+import com.qiubo.optimaltv.voice.VoiceSearchRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
@@ -106,6 +108,15 @@ internal fun isSearchResultItemFullyVisible(
 /** Compose 的 requestFocus() 在当前 BOM 返回 Unit；用焦点事件确认后再结束重试。 */
 internal fun shouldRetryResultFocus(attempt: Int, focusObserved: Boolean): Boolean =
     !focusObserved && attempt < RESULT_FOCUS_RETRY_ATTEMPTS - 1
+
+/**
+ * SystemEditText echoes a programmatic value change through onValueChange. Keep the pending
+ * auto-open flag for that echo, but clear it as soon as the user edits the query.
+ */
+internal fun shouldClearPendingFirstResult(
+    editedQuery: String,
+    pendingOpenFirstQuery: String?,
+): Boolean = pendingOpenFirstQuery != null && editedQuery != pendingOpenFirstQuery
 
 /** Debug-only deterministic items for exercising the real search grid and D-pad focus path. */
 internal fun searchFocusFixtureItems(count: Int): List<VodItem> =
@@ -185,7 +196,6 @@ fun SearchScreen(nav: NavController) {
     val searchInput = rememberSystemEditTextHandle()
     var restoredFocus by remember { mutableStateOf(false) }
     val voiceSearchAtEntry = remember { VoiceSearchBus.hasPendingQuery() }
-    var voiceImmediateQuery by remember { mutableStateOf<String?>(null) }
     var openFirstResultQuery by remember { mutableStateOf<String?>(null) }
     val s = rememberUiScale()
     SideEffect {
@@ -209,14 +219,21 @@ fun SearchScreen(nav: NavController) {
         }
     }
 
+    fun applyVoiceRequest(request: VoiceSearchRequest) {
+        searchInput.hideKeyboard()
+        openFirstResultQuery = request.query.takeIf { request.openFirstResult }
+        query = request.query
+        OtvLog.i(
+            "voice-search query applied chars=${request.query.length} " +
+                "openFirst=${request.openFirstResult}",
+        )
+    }
+
     // 语音请求使用事件直达，避免搜索页再轮询 200ms；播放类命令允许首项自动打开。
     LaunchedEffect(Unit) {
         VoiceSearchBus.updates.collectLatest {
             VoiceSearchBus.takeRequest()?.let { request ->
-                searchInput.hideKeyboard()
-                voiceImmediateQuery = request.query
-                openFirstResultQuery = request.query.takeIf { request.openFirstResult }
-                query = request.query
+                applyVoiceRequest(request)
             }
         }
     }
@@ -225,9 +242,14 @@ fun SearchScreen(nav: NavController) {
     var debugFixtureItems by remember { mutableStateOf<List<VodItem>?>(null) }
     LaunchedEffect(Unit) {
         while (true) {
+            // 搜索页已在前台时，StateFlow 更新可能在 Activity 暂停窗口丢失；轮询兜底
+            // 保证新查询仍然替换旧结果，而不是继续打开上一轮的条目。
+            VoiceSearchBus.takeRequest()?.let { request ->
+                OtvLog.i("voice-search query polled chars=${request.query.length}")
+                applyVoiceRequest(request)
+            }
             SearchDebugBus.pendingQuery?.let {
                 SearchDebugBus.pendingQuery = null
-                voiceImmediateQuery = null
                 openFirstResultQuery = null
                 query = it
             }
@@ -393,10 +415,11 @@ fun SearchScreen(nav: NavController) {
                 Spacer(Modifier.width(24f.sx(s)))
                 SystemEditText(
                     value = query,
-                    onValueChange = {
-                        voiceImmediateQuery = null
-                        openFirstResultQuery = null
-                        query = it
+                    onValueChange = { edited ->
+                        if (shouldClearPendingFirstResult(edited, openFirstResultQuery)) {
+                            openFirstResultQuery = null
+                        }
+                        query = edited
                     },
                     hint = "搜索影片、演员",
                     handle = searchInput,

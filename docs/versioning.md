@@ -9,7 +9,7 @@ lives in [Repository layout and release authority](repository-layout.md).
 
 | Product | `applicationId` | Version source | Status |
 | --- | --- | --- | --- |
-| Video Pro TV | `com.dongpiandi.videopro` | `frontend-tv/app/build.gradle` | Official release line; currently `1.0.0` (`versionCode 10`) |
+| Video Pro TV | `com.dongpiandi.videopro` | `frontend-tv/app/build.gradle` | Official release line; currently `1.0.1` (`versionCode 11`) |
 | Experimental KMP TV | `com.dongpiandi.videopro` | `app-tv/build.gradle.kts` | Reference only; currently `0.3.0` (`versionCode 6`), never publish |
 | Jellystack mobile | `app.jellystack.mobile` | `app-android/build.gradle.kts` | Inherited mobile line |
 | iOS | Not distributed | `app-ios` build configuration | Experimental; no supported App Store release |

@@ -1,6 +1,7 @@
 package com.qiubo.optimaltv.voice
 
 import android.content.Intent
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,10 +13,14 @@ internal data class VoiceSearchRequest(
 
 internal object VoiceSearchContract {
     const val ACTION_OPEN_SEARCH = "com.dongpiandi.videopro.action.OPEN_SEARCH"
+    const val ACTION_OPEN_SEARCH_IN_APP =
+        "com.dongpiandi.videopro.action.OPEN_SEARCH_IN_APP"
     const val EXTRA_QUERY = "query"
     const val EXTRA_OPEN_FIRST_RESULT = "openFirstResult"
     const val PERMISSION = "com.dongpiandi.videopro.permission.VOICE_SEARCH"
     const val MAX_QUERY_LENGTH = 80
+
+    private val supportedActions = setOf(ACTION_OPEN_SEARCH, ACTION_OPEN_SEARCH_IN_APP)
 
     fun normalizeQuery(raw: String?): String? {
         val cleaned =
@@ -28,11 +33,24 @@ internal object VoiceSearchContract {
     }
 
     fun requestFromIntent(intent: Intent?): VoiceSearchRequest? {
-        if (intent?.action != ACTION_OPEN_SEARCH) return null
-        val query = normalizeQuery(intent.getStringExtra(EXTRA_QUERY)) ?: return null
+        val actualIntent = intent ?: return null
+        return requestFromValues(
+            action = actualIntent.action,
+            rawQuery = actualIntent.getStringExtra(EXTRA_QUERY),
+            openFirstResult = actualIntent.getBooleanExtra(EXTRA_OPEN_FIRST_RESULT, false),
+        )
+    }
+
+    internal fun requestFromValues(
+        action: String?,
+        rawQuery: String?,
+        openFirstResult: Boolean,
+    ): VoiceSearchRequest? {
+        if (action !in supportedActions) return null
+        val query = normalizeQuery(rawQuery) ?: return null
         return VoiceSearchRequest(
             query = query,
-            openFirstResult = intent.getBooleanExtra(EXTRA_OPEN_FIRST_RESULT, false),
+            openFirstResult = openFirstResult,
         )
     }
 }
@@ -61,6 +79,9 @@ internal object VoiceSearchBus {
             )
         navigationPending = true
         revisions.value = revisions.value + 1
+        runCatching {
+            Log.i(TAG, "submit chars=${normalized.length} openFirst=${request.openFirstResult}")
+        }
         return true
     }
 
@@ -73,6 +94,7 @@ internal object VoiceSearchBus {
         }
         if (!navigationPending) return null
         navigationPending = false
+        runCatching { Log.i(TAG, "navigation taken chars=${request.request.query.length}") }
         return request.request
     }
 
@@ -80,6 +102,7 @@ internal object VoiceSearchBus {
     fun takeRequest(): VoiceSearchRequest? {
         val request = pending ?: return null
         clear()
+        runCatching { Log.i(TAG, "query consumed chars=${request.request.query.length}") }
         return request.request.takeUnless { isExpired(request) }
     }
 
@@ -106,4 +129,6 @@ internal object VoiceSearchBus {
         pending = null
         navigationPending = false
     }
+
+    private const val TAG = "VoiceSearchBus"
 }
