@@ -2,7 +2,7 @@
 
 > **Status (2026-11-05):** This module is part of the experimental KMP TV
 > migration. The official TV application is
-> [`frontend-tv`](../frontend-tv), version `0.3.2` (`versionCode 8`). Do not
+> [`frontend-tv`](../frontend-tv), version `0.3.3` (`versionCode 9`). Do not
 > treat `dongpian-data` as the release implementation. See
 > [Repository layout and release authority](repository-layout.md).
 

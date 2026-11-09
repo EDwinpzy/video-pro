@@ -779,7 +779,7 @@ class PlayerViewModel(
             return
         }
         if (this::engine.isInitialized) runCatching { engine.release() }
-        installEngine(EngineRegistry.create(settings.current().engineId, Graph.appContext))
+        installEngine(EngineRegistry.create(EngineRegistry.VOD_ENGINE_ID, Graph.appContext))
         _ui.value = _ui.value.copy(
             title = r.first, epCount = 1, lines = r.second,
             engineId = engine.engineId, engineName = engine.displayName,
@@ -799,7 +799,7 @@ class PlayerViewModel(
             return
         }
         if (this::engine.isInitialized) runCatching { engine.release() }
-        installEngine(EngineRegistry.create(settings.current().engineId, Graph.appContext))
+        installEngine(EngineRegistry.create(EngineRegistry.VOD_ENGINE_ID, Graph.appContext))
         _ui.value = _ui.value.copy(
             lines = lines, engineId = engine.engineId, engineName = engine.displayName,
             aspectOrdinal = settings.current().aspectOrdinal,
@@ -1162,14 +1162,6 @@ class PlayerViewModel(
                         // ③ VLC 也报错 → 交回常规失败链。
                         // 均不占换线/同线重解析配额（解码器问题换线也没用）
                         val decodeFail = st.errorMsg?.contains("DECODING_FAILED") == true
-                        if (retriesCurrentVodUntilUserLeaves() && decodeFail &&
-                            engine.engineId == "media3" && !vlcFallbackTried
-                        ) {
-                            vlcFallbackTried = true
-                            OtvLog.w("点播 Media3 解码失败 → 切 libVLC，保留当前影视源")
-                            switchEngine("vlc")
-                            return@collect
-                        }
                         if (_ui.value.isLive && decodeFail && hasEngine()) {
                             when {
                                 !softwareFallbackTried && engine.engineId == "media3" -> {
@@ -1234,6 +1226,7 @@ class PlayerViewModel(
         if (hostInBackground || !hasEngine() || !engine.supportsSeamlessNext) return
         if (st.state != EnginePlayState.READY || !st.isPlaying || st.durationMs <= 0L) return
         val shortDrama = isCurrentShortDrama(durationMs = st.durationMs)
+        if (!NextEpisodePreloadPolicy.currentItemCanSpareBandwidth(st.bufferedAheadMs)) return
         val next = AutoPlayPolicy.nextEpisodeIndex(
             isLive = ui.isLive,
             isMovie = ui.isMovie,
@@ -1631,6 +1624,7 @@ class PlayerViewModel(
                     isLive = _ui.value.isLive,
                     hasFatalMessage = failureReason != null,
                     attemptFailed = attemptFailed,
+                    fatalReason = failureReason,
                 )
             ) return
             OtvLog.w("VOD 暂时无法解析或启动，保留当前影片并继续重试: ${failureReason ?: "启播流程异常"}")
@@ -1779,9 +1773,10 @@ class PlayerViewModel(
         }
 
         // 按稳定源标识恢复上次选择；解析器首选只作为没有历史选择时的默认线路。
-        val memory = settings.lastLine(vodId)
         val rememberedSource = if (isFootballVod) null else settings.lastVodSource(vodId)
-        val enginePref = memory?.first ?: settings.current().engineId
+        // Keep the remembered line, but never restore a previous automatic VOD engine fallback.
+        // Only an explicit live/debug path may select libVLC.
+        val enginePref = EngineRegistry.VOD_ENGINE_ID
         val preferredLine = pick.preferredIndex.takeIf { pick.hasImmediate } ?: 0
         val initialLine = VodSourceSelectionPolicy.initialIndex(lines, rememberedSource, preferredLine)
         val initialLineInfo = lines.getOrNull(initialLine)
@@ -2205,12 +2200,11 @@ class PlayerViewModel(
                     nowMs = nowMs,
                     waiting = true,
                 ) ?: continue
-                val onMedia3 = hasEngine() && engine.engineId == "media3"
                 val hasBackup = s.lines.indices.any { it != s.activeLine }
                 val action = if (isFootballVod) {
-                    FirstFrameRecoveryPolicy.footballAction(elapsed, hasBackup, onMedia3, vlcFallbackTried)
+                    FirstFrameRecoveryPolicy.footballAction(elapsed, hasBackup)
                 } else {
-                    FirstFrameRecoveryPolicy.action(elapsed, hasBackup, onMedia3, vlcFallbackTried)
+                    FirstFrameRecoveryPolicy.action(elapsed, hasBackup)
                 }
                 // 只在档位变严重时动作（阶梯单调升档）。
                 if (!firstFrameLadder.acceptEscalation(generation, action)) continue
@@ -2334,18 +2328,11 @@ class PlayerViewModel(
                                     recoverPlaybackStall("BUFFERING ${bufferingMs / 1000}s 无进展")
                                 }
                                 LongPlaybackHealthPolicy.Action.DEGRADE_ENGINE -> {
-                                    OtvLog.w("缓冲 ${bufferingMs}ms 无增长 → 引擎降级")
-                                    if (hasEngine() && engine.engineId == "media3" && !vlcFallbackTried) {
-                                        vlcFallbackTried = true
-                                        telemetry.mark(
-                                            PlaybackTelemetry.Stage.ENGINE_FALLBACK,
-                                            errorClass = PlaybackTelemetry.ErrorClass.DECODE,
-                                            detail = "buffering ${bufferingMs}ms → vlc",
-                                        )
-                                        switchEngine("vlc")
-                                    } else {
-                                        recoverPlaybackStall("BUFFERING ${bufferingMs / 1000}s 无进展")
-                                    }
+                                    // Buffering is a supply problem, not a decoder verdict. Keep the
+                                    // selected engine and source; same-line reload is the only
+                                    // recovery path the user has authorised.
+                                    OtvLog.w("缓冲 ${bufferingMs}ms 无增长 → 同线恢复（不换引擎/不换源）")
+                                    recoverPlaybackStall("BUFFERING ${bufferingMs / 1000}s 无进展")
                                 }
                                 LongPlaybackHealthPolicy.Action.GIVE_UP -> {
                                     OtvLog.e("缓冲 ${bufferingMs}ms 无增长 → 放弃当前线")
@@ -2483,7 +2470,8 @@ class PlayerViewModel(
                             hasBackup = _ui.value.lines.indices.any { it != _ui.value.activeLine },
                             errorClass = PlaybackTelemetry.ErrorClass.DECODE,
                         )
-                        if (action == LongPlaybackHealthPolicy.Action.DEGRADE_ENGINE &&
+                        if (s.isLive &&
+                            action == LongPlaybackHealthPolicy.Action.DEGRADE_ENGINE &&
                             hasEngine() && engine.engineId == "media3" && !vlcFallbackTried
                         ) {
                             vlcFallbackTried = true
@@ -3698,7 +3686,23 @@ class PlayerViewModel(
 
     fun toggleDanmaku() {
         val enabled = !_ui.value.danmakuEnabled
-        _ui.value = _ui.value.copy(danmakuEnabled = enabled)
+        if (enabled) {
+            _ui.value = _ui.value.copy(danmakuEnabled = true)
+            currentItem?.let { startDanmakuForEpisode(it, _ui.value.epIndex) }
+        } else {
+            danmakuJob?.cancel()
+            danmakuJob = null
+            danmakuEpisodeId = null
+            danmakuClient.clearMemoryCache()
+            _ui.value =
+                _ui.value.copy(
+                    danmakuEnabled = false,
+                    danmakuAvailable = false,
+                    danmakuLoading = false,
+                    danmakuStatus = "",
+                    danmakuItems = emptyList(),
+                )
+        }
         viewModelScope.launch { settings.setDanmakuEnabled(enabled) }
     }
 
@@ -3748,7 +3752,11 @@ class PlayerViewModel(
         episodeIndex: Int,
     ) {
         val episodeId = item.episodes.getOrNull(episodeIndex)?.url.orEmpty()
-        if (_ui.value.isLive || !item.detailRef.startsWith("dongpian:") || episodeId.isBlank()) {
+        if (!_ui.value.danmakuEnabled ||
+            _ui.value.isLive ||
+            !item.detailRef.startsWith("dongpian:") ||
+            episodeId.isBlank()
+        ) {
             danmakuJob?.cancel()
             danmakuEpisodeId = null
             _ui.value =
@@ -3807,9 +3815,25 @@ class PlayerViewModel(
                         delay(DANMAKU_STALE_RETRY_MS)
                         continue
                     }
+                    val current = _ui.value
+                    if (result.items === current.danmakuItems) {
+                        if (current.danmakuLoading ||
+                            current.danmakuAvailable != result.available ||
+                            current.danmakuStatus != result.status
+                        ) {
+                            _ui.value =
+                                current.copy(
+                                    danmakuAvailable = result.available,
+                                    danmakuLoading = false,
+                                    danmakuStatus = result.status,
+                                )
+                        }
+                        delay(if (result.available) DANMAKU_REFRESH_MS else DANMAKU_RETRY_MS)
+                        continue
+                    }
                     val mergedItems =
                         DanmakuWindowPolicy.mergeWindowItems(
-                            previous = _ui.value.danmakuItems,
+                            previous = current.danmakuItems,
                             incoming = result.items,
                             incomingFromMs = result.fromMs,
                         )
@@ -4037,6 +4061,13 @@ class PlayerViewModel(
             } catch (failure: Exception) {
                 OtvLog.w("换集映射失败 ep=$ep: ${failure.message}")
                 failureMessage = failure.message
+            }
+            if (!isCurrentVodSelection(
+                    selectionRequest, requestGeneration, requestLine, requestEngine, requestEngineEpoch,
+                )
+            ) {
+                OtvLog.i("忽略已过期的换集结果 ep=$ep")
+                return@launch
             }
             if (lineIndex == null) {
                 currentItem = refreshedItem

@@ -185,6 +185,13 @@ internal object HomeLibraryUiPolicy {
         return column.coerceIn(0, lastColumn) * 2 + targetRow
     }
 
+    /** Clamp a remembered focus column to the cards a section actually has. */
+    fun clampRecommendationColumn(requested: Int, itemCount: Int, rows: Int): Int {
+        if (itemCount <= 0 || rows <= 0) return 0
+        val lastColumn = (itemCount + rows - 1) / rows - 1
+        return requested.coerceIn(0, lastColumn)
+    }
+
 }
 
 @Composable
@@ -289,17 +296,43 @@ private fun CategoryVodScreen(
     val sectionFocusedColumn = remember(categoryKey) { IntArray(sectionTitles.size) }
     fun sectionEntries(index: Int): List<VodItem> =
         categorySections.firstOrNull { it.name == sectionTitles.getOrNull(index) }?.items.orEmpty()
+    fun sectionLastColumn(index: Int): Int {
+        val entries = sectionEntries(index).distinctBy(VodItem::id)
+        val rows =
+            if (index == 0 && !com.qiubo.optimaltv.TvPerformanceProfile.isConstrained) 2 else 1
+        return HomeLibraryUiPolicy.clampRecommendationColumn(
+            requested = Int.MAX_VALUE,
+            itemCount = entries.size,
+            rows = rows,
+        )
+    }
     fun focusSection(targetIndex: Int) {
         if (targetIndex !in sectionTitles.indices) return
         heroFocusScope.launch {
             try {
-                focusHomeSection(
-                    listState = vodListState,
-                    targetIndex = targetIndex,
-                    firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(
-                        sectionFocusedColumn[targetIndex],
-                    ) { FocusRequester() },
-                )
+                val column = sectionFocusedColumn[targetIndex].coerceIn(0, sectionLastColumn(targetIndex))
+                sectionFocusedColumn[targetIndex] = column
+                val focused =
+                    focusHomeSection(
+                        listState = vodListState,
+                        targetIndex = targetIndex,
+                        firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(column) {
+                            FocusRequester()
+                        },
+                    )
+                if (!focused) {
+                    // A section may have fewer columns than the one we came from.
+                    // Falling back to its first card keeps the D-pad alive instead of
+                    // leaving focus on the previous row for every subsequent press.
+                    sectionFocusedColumn[targetIndex] = 0
+                    focusHomeSection(
+                        listState = vodListState,
+                        targetIndex = targetIndex,
+                        firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(0) {
+                            FocusRequester()
+                        },
+                    )
+                }
             } finally {
                 sectionMoveInFlight[0] = false
             }
@@ -310,7 +343,7 @@ private fun CategoryVodScreen(
         var target = fromIndex + step
         while (target in sectionTitles.indices) {
             if (sectionEntries(target).isNotEmpty()) {
-                sectionFocusedColumn[target] = column
+                sectionFocusedColumn[target] = column.coerceIn(0, sectionLastColumn(target))
                 sectionMoveInFlight[0] = true
                 focusSection(target)
                 return true

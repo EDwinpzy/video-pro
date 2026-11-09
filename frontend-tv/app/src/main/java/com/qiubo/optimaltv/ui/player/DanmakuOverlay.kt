@@ -70,7 +70,8 @@ internal object DanmakuLanePolicy {
 
 internal object DanmakuPresentationPolicy {
     const val BASE_TEXT_SIZE_SP = 24
-    const val BASE_TRAVEL_DURATION_MS = 9_000f
+    /** 12s across the viewport at 1.0x: the old 9s read as rushed on the projector. */
+    const val BASE_TRAVEL_DURATION_MS = 12_000f
 
     fun laneCount(
         displayArea: DanmakuDisplayArea,

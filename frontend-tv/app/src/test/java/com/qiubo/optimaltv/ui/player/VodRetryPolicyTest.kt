@@ -39,6 +39,28 @@ class VodRetryPolicyTest {
     }
 
     @Test
+    fun `permanent missing-line failures stop the boot retry loop`() {
+        assertFalse(VodRetryPolicy.shouldRetryBootAfterAttempt(
+            isLive = false,
+            hasFatalMessage = true,
+            attemptFailed = false,
+            fatalReason = "该集没有可用线路",
+        ))
+        assertFalse(VodRetryPolicy.shouldRetryBootAfterAttempt(
+            isLive = false,
+            hasFatalMessage = true,
+            attemptFailed = false,
+            fatalReason = "换集失败，请重试",
+        ))
+        assertTrue(VodRetryPolicy.shouldRetryBootAfterAttempt(
+            isLive = false,
+            hasFatalMessage = true,
+            attemptFailed = false,
+            fatalReason = "懂片帝服务暂时不可用（HTTP 502）。",
+        ))
+    }
+
+    @Test
     fun `pending seek target is kept while engine position is stale`() {
         assertEquals(184_000L, VodRetryPolicy.resumePositionMs(184_000L, 12_000L))
         assertEquals(12_000L, VodRetryPolicy.resumePositionMs(null, 12_000L))

@@ -43,6 +43,9 @@ enum class EnginePlayState { IDLE, BUFFERING, READY, ENDED, ERROR }
 
 private const val EPISODE_SWITCH_PRELOAD_US = 6_000_000L
 
+/** Hard byte cap for Media3's sample queues; keeps a low-RAM TV well below its heap limit. */
+private const val PLAYER_TARGET_BUFFER_BYTES = 48 * 1024 * 1024
+
 data class EngineUiState(
     val state: EnginePlayState = EnginePlayState.IDLE,
     val positionMs: Long = 0,
@@ -175,6 +178,12 @@ data class EngineDescriptor(
 )
 
 object EngineRegistry {
+    /**
+     * VOD always starts on Media3. libVLC uses substantially more memory when it decodes in
+     * software, so a previous automatic fallback must never become the default for later sessions.
+     */
+    const val VOD_ENGINE_ID = "media3"
+
     val descriptors = listOf(
         EngineDescriptor("media3", "Media3 / ExoPlayer", true, "默认内核：HLS/DASH 标准流、硬解稳定"),
         EngineDescriptor("vlc", "libVLC 兜底", true, "自带 ffmpeg 软解：MediaCodec 解不动的流（AVC High 8x8）自动兜底"),
@@ -614,8 +623,13 @@ class Media3Engine(context: Context) : MediaEngine {
                 else -> intArrayOf(30_000, 120_000, 1_000, 6_000).toList()
             }
         val loadControl = DefaultLoadControl.Builder()
+            // S621 堆上限只有 160MB。旧配置开启了 prioritizeTimeOverSizeThresholds，
+            // 120s 缓冲会绕过 64MB 分配上限一路涨到 100MB+（HPROF 实测 1603 个
+            // SampleDataQueue$AllocationNode），最终在播放页 OOM。缓冲首先必须守住
+            // 内存上限；按字节裁剪后播放器会在样本消费后再补给，不影响持续播放。
+            .setTargetBufferBytes(PLAYER_TARGET_BUFFER_BYTES)
             .setBufferDurationsMs(minBuf, maxBuf, startBuf, reBuf)
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
         val p = ExoPlayer.Builder(appCtx, renderersFactory)
             // v1.14 卡顿根治：签名过期/防盗链类 4xx 重试必同果——默认策略的指数退避
@@ -630,6 +644,11 @@ class Media3Engine(context: Context) : MediaEngine {
             .setSeekForwardIncrementMs(30_000)
             .build()
         applyPreloadConfiguration(p)
+        // Keep the last presented frame when Media3 resets the surface for the next
+        // playlist item. Without this the SurfaceView goes black for the decoder
+        // startup window even when the next item was preloaded.
+        runCatching { renderViewAsPlayer().setKeepContentOnPlayerReset(true) }
+            .onFailure { com.qiubo.optimaltv.OtvLog.w("engine keep-content failed: ${it.message}") }
         p.setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)

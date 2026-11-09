@@ -1,6 +1,6 @@
 # Video Pro TV frontend
 
-This is the authoritative TV application. Version `0.3.2` (`versionCode 8`)
+This is the authoritative TV application. Version `0.3.3` (`versionCode 9`)
 restores the complete legacy frontend after the experimental KMP TV shell and
 keeps all login, native-input, startup, focus, playback, and low-tier
 performance work.

@@ -154,6 +154,15 @@ internal object DongpianDanmakuTransferProtocol {
 }
 
 internal object DanmakuWindowPolicy {
+    fun normalized(items: List<DanmakuItem>): List<DanmakuItem> =
+        if (items.size < 2) {
+            items
+        } else {
+            items
+                .distinctBy { "${it.timeMs}|${it.sourceMode}|${it.content}" }
+                .sortedBy(DanmakuItem::timeMs)
+        }
+
     fun segmentIndex(
         segments: List<DanmakuSegmentSpec>,
         positionMs: Long,
@@ -180,8 +189,11 @@ internal object DanmakuWindowPolicy {
         keepBehindMs: Long = 30_000L,
     ): List<DanmakuItem> {
         if (incoming.isEmpty()) return previous
+        if (previous.isEmpty() || previous === incoming) return incoming
         val cutoffMs = (incomingFromMs - keepBehindMs.coerceAtLeast(0L)).coerceAtLeast(0L)
-        return (previous.filter { it.timeMs in cutoffMs until incomingFromMs } + incoming)
+        val retained = previous.filter { it.timeMs in cutoffMs until incomingFromMs }
+        if (retained.isEmpty()) return incoming
+        return (retained + incoming)
             .distinctBy { "${it.timeMs}|${it.sourceMode}|${it.content}" }
             .sortedBy(DanmakuItem::timeMs)
     }
@@ -227,6 +239,8 @@ class DongpianDanmakuClient internal constructor(
     private var manifestExpiresAt: Long = 0L
     private var sourceRetryAt: Long = 0L
     private var lastStatus: String = ""
+    private var cachedWindowIndex: Int = -1
+    private var cachedWindow: DanmakuWindow? = null
 
     suspend fun loadWindow(
         episodeId: String,
@@ -241,6 +255,7 @@ class DongpianDanmakuClient internal constructor(
         }
         val currentIndex = DanmakuWindowPolicy.segmentIndex(manifest.segments, positionMs)
             ?: return DanmakuWindow(emptyList(), false, "当前集暂无弹幕")
+        if (cachedWindowIndex == currentIndex) cachedWindow?.let { return it }
         val segment = manifest.segments[currentIndex]
         val items =
             try {
@@ -262,11 +277,26 @@ class DongpianDanmakuClient internal constructor(
                 )
             }
         return DanmakuWindow(
-            items = items.distinctBy { "${it.timeMs}|${it.sourceMode}|${it.content}" }.sortedBy(DanmakuItem::timeMs),
+            items = items,
             available = true,
             fromMs = segment.fromMs,
             toMs = segment.toMs,
-        )
+        ).also {
+            cachedWindowIndex = currentIndex
+            cachedWindow = it
+        }
+    }
+
+    fun clearMemoryCache() {
+        cachedEpisodeId = ""
+        cachedManifest = null
+        manifestExpiresAt = 0L
+        sourceRetryAt = 0L
+        lastStatus = ""
+        manifestUrlOrigin = ""
+        cachedWindowIndex = -1
+        cachedWindow = null
+        synchronized(segmentCache) { segmentCache.clear() }
     }
 
     private var manifestUrlOrigin: String = ""
@@ -280,6 +310,8 @@ class DongpianDanmakuClient internal constructor(
             sourceRetryAt = 0L
             lastStatus = ""
             segmentCache.clear()
+            cachedWindowIndex = -1
+            cachedWindow = null
         }
         cachedManifest?.takeIf { now < manifestExpiresAt }?.let { return it }
         val cached = cachedManifest
@@ -368,7 +400,9 @@ class DongpianDanmakuClient internal constructor(
             JSONObject(
                 String(decodeGzipIfNeeded(raw), StandardCharsets.UTF_8),
             )
-        return DongpianDanmakuParser.parseSegment(json, spec).also {
+        return DanmakuWindowPolicy
+            .normalized(DongpianDanmakuParser.parseSegment(json, spec))
+            .also {
             synchronized(segmentCache) { segmentCache[key] = it }
         }
     }
@@ -709,10 +743,10 @@ class DongpianDanmakuClient internal constructor(
     )
 
     private companion object {
-        const val MAX_CACHED_SEGMENTS = 24
+        const val MAX_CACHED_SEGMENTS = 2
         const val MAX_MANIFEST_BYTES = 256 * 1024
-        const val MAX_SEGMENT_BYTES = 32 * 1024 * 1024
-        const val MAX_DECODED_BYTES = 128 * 1024 * 1024
+        const val MAX_SEGMENT_BYTES = 8 * 1024 * 1024
+        const val MAX_DECODED_BYTES = 16 * 1024 * 1024
         const val DOWNLOAD_BUFFER_BYTES = 16 * 1024
         const val MAX_STALLED_ATTEMPTS = 3
         const val SEGMENT_TRANSFER_BUDGET_MINUTES = 6L

@@ -2,6 +2,7 @@ package com.qiubo.optimaltv.data.source
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,6 +78,48 @@ class DongpianDanmakuWindowPolicyTest {
                 incomingFromMs = 300_000L,
             ),
         )
+    }
+
+    @Test
+    fun publishesTheParsedSegmentWithoutCopyingItEveryRefresh() {
+        val incoming = listOf(item(300_000L, "new-segment"))
+
+        assertSame(
+            incoming,
+            DanmakuWindowPolicy.mergeWindowItems(
+                previous = emptyList(),
+                incoming = incoming,
+                incomingFromMs = 300_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun ignoresPreviousCommentsOutsideTheBoundaryCarryOver() {
+        val incoming = listOf(item(300_000L, "new-segment"))
+
+        assertSame(
+            incoming,
+            DanmakuWindowPolicy.mergeWindowItems(
+                previous = listOf(item(100_000L, "old-segment")),
+                incoming = incoming,
+                incomingFromMs = 300_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun normalizesOncePerParsedSegment() {
+        val normalized =
+            DanmakuWindowPolicy.normalized(
+                listOf(
+                    item(302_000L, "later"),
+                    item(300_000L, "same"),
+                    item(300_000L, "same"),
+                ),
+            )
+
+        assertEquals(listOf("same", "later"), normalized.map(DanmakuItem::content))
     }
 
     private fun segment(fromMs: Long, toMs: Long) =
