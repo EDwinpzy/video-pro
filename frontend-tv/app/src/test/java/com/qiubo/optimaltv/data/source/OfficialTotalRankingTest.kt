@@ -46,11 +46,11 @@ class OfficialTotalRankingTest {
             response(listOf("a"), false, 1)
         }
         val sections = source.animeRecommendationSections()
-        assertEquals(listOf("最近热门", "最近更新", "豆瓣高分"), sections.map { it.title })
-        assertEquals(3, paths.size)
+        assertEquals(listOf("最近热门", "最近更新"), sections.map { it.title })
+        assertEquals(2, paths.size)
         assertTrue(paths.all { "kind=anime" in it })
         assertTrue(paths.any { "intent=latest_catalog" in it })
-        assertTrue(paths.any { "sort=rating" in it })
+        assertTrue(paths.none { "sort=rating" in it })
     }
 
     @Test fun usesTotalWindowAndFollowsHasMoreInsteadOfReportedTotal() = runTest {

@@ -11,7 +11,13 @@ internal object VodRetryPolicy {
         isLive: Boolean,
         hasFatalMessage: Boolean,
         attemptFailed: Boolean,
-    ): Boolean = shouldRetry(isLive) && (hasFatalMessage || attemptFailed)
+        fatalReason: String? = null,
+    ): Boolean = shouldRetry(isLive) &&
+        !isPermanentVodFailure(fatalReason) &&
+        (hasFatalMessage || attemptFailed)
+
+    private fun isPermanentVodFailure(reason: String?): Boolean =
+        reason != null && PERMANENT_VOD_FAILURES.any(reason::contains)
 
     fun shouldUseStartupWatchdog(isLive: Boolean): Boolean = isLive
 
@@ -26,6 +32,8 @@ internal object VodRetryPolicy {
     fun matchingSourceIndex(sourceIdentity: String?, candidates: List<String?>): Int? =
         sourceIdentity?.takeIf(String::isNotBlank)
             ?.let { identity -> candidates.indexOf(identity).takeIf { it >= 0 } }
+
+    private val PERMANENT_VOD_FAILURES = listOf("没有可用线路", "换集失败")
 }
 
 /** A cancelled selection invalidates every delayed retry from the previous selection. */

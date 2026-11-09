@@ -2,6 +2,8 @@ package com.qiubo.optimaltv.ui.player
 
 internal object NextEpisodePreloadPolicy {
     const val MIN_EPISODE_MS = 45_000L
+    /** Never start a second download while the current item is still shallow-buffered. */
+    const val MIN_CURRENT_BUFFER_MS = 12_000L
     private const val SHORT_EPISODE_MS = 5 * 60_000L
     private const val LONG_CONTENT_LEAD_MS = 15 * 60_000L
 
@@ -35,4 +37,7 @@ internal object NextEpisodePreloadPolicy {
         hasNextEpisode &&
             durationMs >= MIN_EPISODE_MS &&
             positionMs >= preloadStartMs(durationMs, introSkipSeconds, outroSkipSeconds)
+
+    fun currentItemCanSpareBandwidth(bufferedAheadMs: Long): Boolean =
+        bufferedAheadMs >= MIN_CURRENT_BUFFER_MS
 }

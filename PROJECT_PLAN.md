@@ -1,7 +1,7 @@
 # Video Pro
 
 > **Release status (2026-11-05):** The official TV source is
-> [`frontend-tv`](frontend-tv), version `0.3.2` (`versionCode 8`). This plan
+> [`frontend-tv`](frontend-tv), version `0.3.3` (`versionCode 9`). This plan
 > records the earlier KMP migration and remains historical/experimental where
 > it differs from the current release. See
 > [`docs/repository-layout.md`](docs/repository-layout.md).

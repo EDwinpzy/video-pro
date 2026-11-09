@@ -133,7 +133,6 @@ class DongpianOfficialVodSource(
         listOf(
             "最近热门" to "sort=trending&window=day",
             "最近更新" to "intent=latest_catalog",
-            "豆瓣高分" to "sort=rating&window=total",
         ).map { (title, query) ->
             async {
                 val items = recommendationSlots.withPermit {

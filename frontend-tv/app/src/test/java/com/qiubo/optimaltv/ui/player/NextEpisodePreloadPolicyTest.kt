@@ -89,4 +89,10 @@ class NextEpisodePreloadPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun shallowCurrentBufferBlocksEveryAdjacentPreload() {
+        assertFalse(NextEpisodePreloadPolicy.currentItemCanSpareBandwidth(11_999L))
+        assertTrue(NextEpisodePreloadPolicy.currentItemCanSpareBandwidth(12_000L))
+    }
 }

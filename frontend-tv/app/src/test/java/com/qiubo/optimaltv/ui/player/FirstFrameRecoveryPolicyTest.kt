@@ -16,23 +16,21 @@ class FirstFrameRecoveryPolicyTest {
         assertEquals(FirstFrameRecoveryPolicy.Action.PREP_BACKUP, FirstFrameRecoveryPolicy.action(3_000))
         assertEquals(FirstFrameRecoveryPolicy.Action.PREP_BACKUP, FirstFrameRecoveryPolicy.action(6_999))
         assertEquals(
-            FirstFrameRecoveryPolicy.Action.ENGINE_FALLBACK,
+            FirstFrameRecoveryPolicy.Action.PREP_BACKUP,
             FirstFrameRecoveryPolicy.action(7_000, hasBackup = true),
         )
         assertEquals(
-            FirstFrameRecoveryPolicy.Action.ENGINE_FALLBACK,
+            FirstFrameRecoveryPolicy.Action.WAIT,
             FirstFrameRecoveryPolicy.action(7_000, hasBackup = false),
         )
     }
 
     @Test fun `VLC retries the same source after its first frame grace expires`() {
         assertEquals(
-            FirstFrameRecoveryPolicy.Action.WAIT,
+            FirstFrameRecoveryPolicy.Action.PREP_BACKUP,
             FirstFrameRecoveryPolicy.action(
                 FirstFrameRecoveryPolicy.RETRY_MS - 1,
                 hasBackup = true,
-                onMedia3 = false,
-                vlcAlreadyTried = true,
             ),
         )
         assertEquals(
@@ -40,8 +38,6 @@ class FirstFrameRecoveryPolicyTest {
             FirstFrameRecoveryPolicy.action(
                 FirstFrameRecoveryPolicy.RETRY_MS,
                 hasBackup = true,
-                onMedia3 = false,
-                vlcAlreadyTried = true,
             ),
         )
     }
@@ -63,15 +59,15 @@ class FirstFrameRecoveryPolicyTest {
 
     @Test fun `VOD replay does not switch sources or time out`() {
         assertEquals(
-            FirstFrameRecoveryPolicy.Action.ENGINE_FALLBACK,
+            FirstFrameRecoveryPolicy.Action.PREP_BACKUP,
             FirstFrameRecoveryPolicy.footballAction(
-                7_000, hasBackup = true, onMedia3 = true, vlcAlreadyTried = false,
+                7_000, hasBackup = true,
             ),
         )
         assertEquals(
             FirstFrameRecoveryPolicy.Action.RETRY_SOURCE,
             FirstFrameRecoveryPolicy.footballAction(
-                Long.MAX_VALUE, hasBackup = true, onMedia3 = false, vlcAlreadyTried = true,
+                Long.MAX_VALUE, hasBackup = true,
             ),
         )
     }

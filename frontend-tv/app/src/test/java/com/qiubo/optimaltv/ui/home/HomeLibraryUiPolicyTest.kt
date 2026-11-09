@@ -63,6 +63,14 @@ class HomeLibraryUiPolicyTest {
     }
 
     @Test
+    fun `跨栏目落焦列号会夹到目标栏目实际卡片范围内`() {
+        assertEquals(7, HomeLibraryUiPolicy.clampRecommendationColumn(9, itemCount = 15, rows = 2))
+        assertEquals(14, HomeLibraryUiPolicy.clampRecommendationColumn(99, itemCount = 15, rows = 1))
+        assertEquals(0, HomeLibraryUiPolicy.clampRecommendationColumn(5, itemCount = 1, rows = 2))
+        assertEquals(0, HomeLibraryUiPolicy.clampRecommendationColumn(5, itemCount = 0, rows = 1))
+    }
+
+    @Test
     fun `进入影视片库默认电影且右侧栏目不进入其他分类`() {
         val categories = listOf("douban:tv" to "电视剧", "douban:movie" to "电影")
         assertEquals(1, HomeLibraryUiPolicy.defaultCategoryIndex(categories))

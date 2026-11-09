@@ -1,5 +1,18 @@
 # Release Notes
 
+## 0.3.3 (Video Pro TV)
+
+- Cap Media3's sample queue at 48 MB and stop letting the 120s duration target override the byte limit. HPROF showed 1,603 sample allocations (~104 MB) on the 160 MB-heap S621, ending in `OutOfMemoryError` during episode switches and danmaku loads.
+- Keep the selected playback engine and source when the first frame is slow. The previous 7s timeout switched a healthy Media3 session to libVLC; that fallback is now removed for VOD startup.
+- Do not replace the decoder on buffering. Stall recovery reloads the same selected source instead of silently changing engine or line.
+- Require a 12s current-item buffer before any adjacent-episode preload, so preloading cannot compete with the video being watched.
+- Keep the last presented frame across Media3 playlist resets, avoiding a black frame while the next preloaded episode starts.
+- Clamp cross-section focus to the target row's real column count and fall back to its first card, fixing dead D-pad movement in the 最近热门/最近更新 rows.
+- Drop the 国漫 豆瓣高分 feed and its network request.
+- Slow the default danmaku scroll from 9s to 12s across the viewport.
+- Reduce danmaku segment memory: parse each window once, keep two segments, and reuse the current list instead of republishing an identical copy every four seconds.
+- Ignore stale episode-resolution failures after rapid UP/DOWN switching, and stop retrying a permanently missing episode line.
+
 ## 0.3.2 (Video Pro TV)
 
 - Stabilize D-pad focus in recommendation rows below the first section so lower rows no longer trigger neighbouring section navigation or lose the current column.
