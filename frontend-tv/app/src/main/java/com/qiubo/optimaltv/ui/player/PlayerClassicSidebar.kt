@@ -178,6 +178,7 @@ private data class SidebarSettingRow(
     val selectedIndex: Int,
     val fixedChipWidth: Dp? = null,
     val compact: Boolean = false,
+    val detail: String? = null,
     val onSelect: (Int) -> Unit,
 )
 
@@ -197,6 +198,15 @@ private fun skipSubmenuHint(ui: PlayerUiState): String =
             "已识别官方片头片尾，未命中时使用下方兜底时长。按返回键回到播放设置。"
         ui.smartSkipEnabled -> "暂未识别官方分段，将使用下方兜底时长。按返回键回到播放设置。"
         else -> "自动识别已关闭，仅使用下方兜底时长。按返回键回到播放设置。"
+    }
+
+private fun danmakuLoadSummary(ui: PlayerUiState): String? =
+    when {
+        !ui.danmakuEnabled -> null
+        ui.danmakuLoading -> "加载中"
+        ui.danmakuAvailable -> "已加载 ${ui.danmakuItems.size} 条弹幕"
+        ui.danmakuStatus.isNotBlank() -> ui.danmakuStatus
+        else -> "当前集暂无弹幕"
     }
 
 /**
@@ -330,6 +340,7 @@ internal fun ClassicMorePanel(
                 options = listOf("开启", "关闭"),
                 selectedIndex = if (ui.danmakuEnabled) 0 else 1,
                 fixedChipWidth = 72.dp,
+                detail = danmakuLoadSummary(ui),
                 onSelect = { index ->
                     if ((index == 0) != ui.danmakuEnabled) vm.toggleDanmaku()
                 },
@@ -1262,44 +1273,62 @@ private fun SidebarSettingsContent(
             )
         }
         Spacer(Modifier.height(5.dp))
-        rows.forEachIndexed { rowIndex, row ->
-            Row(
-                Modifier.fillMaxWidth().height(36.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = row.label,
-                    color = SidebarMutedWarm,
-                    fontSize = 9.5.sp,
-                    modifier = Modifier.width(70.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    row.options.forEachIndexed { column, option ->
-                        val widthModifier =
-                            when {
-                                row.fixedChipWidth != null -> Modifier.width(row.fixedChipWidth)
-                                row.compact -> Modifier
-                                else -> Modifier.weight(1f)
-                            }
-                        SidebarSettingChip(
-                            text = option,
-                            active = row.selectedIndex == column,
-                            focus = focus,
-                            row = rowIndex,
-                            column = column,
-                            modifier =
-                                Modifier
-                                    .then(widthModifier)
-                                    .height(30.dp)
-                                    .then(focus.modifier(rowIndex, column)),
-                            onNavigate = onNavigate,
-                            onClick = { row.onSelect(column) },
-                        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            rows.forEachIndexed { rowIndex, row ->
+                Row(
+                    Modifier.fillMaxWidth().height(36.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = row.label,
+                        color = SidebarMutedWarm,
+                        fontSize = 9.5.sp,
+                        modifier = Modifier.width(70.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        row.options.forEachIndexed { column, option ->
+                            val widthModifier =
+                                when {
+                                    row.fixedChipWidth != null -> Modifier.width(row.fixedChipWidth)
+                                    row.compact -> Modifier
+                                    else -> Modifier.weight(1f)
+                                }
+                            SidebarSettingChip(
+                                text = option,
+                                active = row.selectedIndex == column,
+                                focus = focus,
+                                row = rowIndex,
+                                column = column,
+                                modifier =
+                                    Modifier
+                                        .then(widthModifier)
+                                        .height(30.dp)
+                                        .then(focus.modifier(rowIndex, column)),
+                                onNavigate = onNavigate,
+                                onClick = { row.onSelect(column) },
+                            )
+                        }
+                        row.detail?.let { detail ->
+                            Text(
+                                text = detail,
+                                color = SidebarMuted,
+                                fontSize = 9.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
+                Spacer(Modifier.height(2.dp))
             }
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(4.dp))
         }
     }
 }

@@ -14,6 +14,9 @@
 - Enable smart intro/outro skipping by default, fold its three settings into one
   compact nested playback menu, and measure each episode card from its title so
   dated episodes pack into rows without wrapping or ellipses.
+- Keep every playback setting reachable on shorter displays with a scrolling
+  settings list, and show the current episode's danmaku load state and count in
+  the playback panel.
 - Keep continuous same-line retry for stalls and buffering, but automatically
   move to another official line after two hard line failures.
 - Build the `1.0.0` (`versionCode 10`) signed TV APK from `frontend-tv` only;
