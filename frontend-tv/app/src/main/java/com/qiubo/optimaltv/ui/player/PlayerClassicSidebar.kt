@@ -241,7 +241,17 @@ internal fun ClassicMorePanel(
     val settingRows =
         listOf(
             SidebarSettingRow(
-                label = "片头跳过",
+                label = "智能跳过",
+                options =
+                    listOf(
+                        "关",
+                        if (ui.officialSkipPreset != null) "已识别" else "自动",
+                    ),
+                selectedIndex = if (ui.smartSkipEnabled) 1 else 0,
+                onSelect = { column -> vm.setSmartSkipEnabled(column == 1) },
+            ),
+            SidebarSettingRow(
+                label = if (ui.smartSkipEnabled) "片头兜底" else "片头跳过",
                 options = listOf(skipValueLabel(ui.skipIntroSeconds)),
                 selectedIndex = 0,
                 onSelect = {
@@ -250,7 +260,7 @@ internal fun ClassicMorePanel(
                 },
             ),
             SidebarSettingRow(
-                label = "片尾跳过",
+                label = if (ui.smartSkipEnabled) "片尾兜底" else "片尾跳过",
                 options = listOf(skipValueLabel(ui.skipOutroSeconds)),
                 selectedIndex = 0,
                 onSelect = {
@@ -336,7 +346,8 @@ internal fun ClassicMorePanel(
                     SidebarStart(row = episodeRowOffset, column = 0)
                 }
             }
-            SidebarTab.Settings -> SidebarStart(row = 0, column = 2)
+            SidebarTab.Settings ->
+                SidebarStart(row = 0, column = if (ui.smartSkipEnabled) 1 else 0)
             SidebarTab.Sources ->
                 SidebarStart(
                     row = ui.activeLine / SidebarSourceColumns,

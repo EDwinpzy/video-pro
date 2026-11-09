@@ -9,6 +9,7 @@ import com.qiubo.optimaltv.data.model.Category
 import com.qiubo.optimaltv.data.model.CatalogMedia
 import com.qiubo.optimaltv.data.model.Episode
 import com.qiubo.optimaltv.data.model.LineInfo
+import com.qiubo.optimaltv.data.model.OfficialSkipPreset
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.prefs.SettingsStore
 import com.qiubo.optimaltv.data.source.ContentSource
@@ -1710,6 +1711,13 @@ class VodRepository(
         detailRequestGenerations.clear()
         playbackDetailReady.clear()
         official.clearAccountScopedCaches()
+    }
+
+    /** Community intro/outro data comes from the official detail already fetched for playback. */
+    fun officialSkipPreset(item: VodItem): OfficialSkipPreset? {
+        val ref = item.detailRef.ifBlank { item.id }
+        if (!ref.startsWith("dongpian:")) return null
+        return officialDetailCache[ref]?.skipPreset
     }
 
     private suspend fun fetchDetailCached(

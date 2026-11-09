@@ -9,8 +9,10 @@ import com.qiubo.optimaltv.data.model.Episode
 import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.data.model.OfficialPlaybackBinding
 import com.qiubo.optimaltv.data.model.OfficialPlaybackLine
+import com.qiubo.optimaltv.data.model.OfficialSkipPreset
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.model.firstUsablePosterUrl
+import com.qiubo.optimaltv.data.prefs.SkipSegmentSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -46,6 +48,7 @@ class DongpianOfficialVodSource(
         val episodeSequenceIndices: List<Int?>,
         val episodeCount: Int,
         val contentKind: String,
+        val skipPreset: OfficialSkipPreset?,
     )
 
     data class Playback(
@@ -279,6 +282,10 @@ class DongpianOfficialVodSource(
                     .takeIf { it > 0 }
                     ?: parsed.size,
             contentKind = json.optString("content_kind"),
+            skipPreset =
+                OfficialSkipPresetParser.parse(
+                    json.optJSONObject("playback_skip_settings_preset"),
+                ),
         ).also { OtvLog.i("official detail ok episodes=${it.episodes.size}") }
     }
 
@@ -632,6 +639,34 @@ class DongpianOfficialVodSource(
             "anime" to "国漫",
             "variety" to "综艺",
             "short" to "短剧",
+        )
+    }
+}
+
+internal object OfficialSkipPresetParser {
+    private const val MIN_COMMUNITY_REPORTS = 3
+
+    fun parse(json: JSONObject?): OfficialSkipPreset? {
+        if (json == null) return null
+        if (json.optString("source").trim() != "community_median") return null
+        val sampleCount = json.optInt("sample_count", -1)
+        val reportCount = json.optInt("report_count", -1)
+        val introEndSeconds = json.optInt("intro_end_seconds", -1)
+        val outroFromEndSeconds = json.optInt("outro_from_end_seconds", -1)
+        if (sampleCount < MIN_COMMUNITY_REPORTS || reportCount < MIN_COMMUNITY_REPORTS) {
+            return null
+        }
+        if (introEndSeconds !in 0..SkipSegmentSettings.MAX_SECONDS ||
+            outroFromEndSeconds !in 0..SkipSegmentSettings.MAX_SECONDS
+        ) {
+            return null
+        }
+        if (introEndSeconds == 0 && outroFromEndSeconds == 0) return null
+        return OfficialSkipPreset(
+            introEndSeconds = introEndSeconds,
+            outroFromEndSeconds = outroFromEndSeconds,
+            sampleCount = sampleCount,
+            reportCount = reportCount,
         )
     }
 }

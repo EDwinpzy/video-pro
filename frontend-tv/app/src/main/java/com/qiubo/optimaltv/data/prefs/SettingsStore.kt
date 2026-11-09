@@ -57,6 +57,8 @@ data class AppSettings(
     val danmakuScrollSpeed: Float = 1.0f,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,
+    /** Prefer official community intro/outro values, falling back to the manual seconds. */
+    val smartSkipEnabled: Boolean = false,
 )
 
 class SettingsStore(private val context: Context) {
@@ -74,6 +76,7 @@ class SettingsStore(private val context: Context) {
         val DANMAKU_SCROLL_SPEED = floatPreferencesKey("danmaku_scroll_speed")
         val SKIP_INTRO_SECONDS = intPreferencesKey("skip_intro_seconds")
         val SKIP_OUTRO_SECONDS = intPreferencesKey("skip_outro_seconds")
+        val SMART_SKIP_ENABLED = booleanPreferencesKey("smart_skip_enabled")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -91,6 +94,7 @@ class SettingsStore(private val context: Context) {
             danmakuScrollSpeed = (p[K.DANMAKU_SCROLL_SPEED] ?: 1.0f).coerceIn(0.5f, 2.0f),
             skipIntroSeconds = SkipSegmentSettings.clamp(p[K.SKIP_INTRO_SECONDS] ?: 0),
             skipOutroSeconds = SkipSegmentSettings.clamp(p[K.SKIP_OUTRO_SECONDS] ?: 0),
+            smartSkipEnabled = p[K.SMART_SKIP_ENABLED] ?: false,
         )
     }
 
@@ -115,6 +119,8 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[K.SKIP_INTRO_SECONDS] = SkipSegmentSettings.clamp(seconds) }
     suspend fun setSkipOutroSeconds(seconds: Int) =
         context.dataStore.edit { it[K.SKIP_OUTRO_SECONDS] = SkipSegmentSettings.clamp(seconds) }
+    suspend fun setSmartSkipEnabled(enabled: Boolean) =
+        context.dataStore.edit { it[K.SMART_SKIP_ENABLED] = enabled }
 
     // ---- 线路记忆（技术方案 §3.2-3：每部影片上次成功的线路，下次直选）----
     private fun lineKey(vodId: String) = stringPreferencesKey("line:$vodId")
