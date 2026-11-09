@@ -13,6 +13,7 @@ import com.qiubo.optimaltv.data.db.ProgressEntity
 import com.qiubo.optimaltv.data.model.Episode
 import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.data.model.LiveStreamSource
+import com.qiubo.optimaltv.data.model.OfficialSkipPreset
 import com.qiubo.optimaltv.data.model.ResolvedPlaybackUrl
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.prefs.AspectMode
@@ -368,6 +369,8 @@ data class PlayerUiState(
     val danmakuScrollSpeed: Float = 1f,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,
+    val smartSkipEnabled: Boolean = false,
+    val officialSkipPreset: OfficialSkipPreset? = null,
     val danmakuAvailable: Boolean = false,
     val danmakuLoading: Boolean = false,
     val danmakuStatus: String = "",
@@ -724,6 +727,7 @@ class PlayerViewModel(
                     danmakuScrollSpeed = preferences.danmakuScrollSpeed,
                     skipIntroSeconds = preferences.skipIntroSeconds,
                     skipOutroSeconds = preferences.skipOutroSeconds,
+                    smartSkipEnabled = preferences.smartSkipEnabled,
                 )
         }
         if (autoBoot) sourceBootJob = viewModelScope.launch { boot() }
@@ -1197,9 +1201,16 @@ class PlayerViewModel(
     }
 
     private fun maybeApplyIntroSkip(st: com.qiubo.optimaltv.playback.EngineUiState) {
-        if (skipIntroApplied || _ui.value.isLive || _ui.value.isMovie) return
+        val ui = _ui.value
+        if (skipIntroApplied || ui.isLive || ui.isMovie) return
+        val introSkipSeconds =
+            EffectiveSkipSegmentPolicy.introSeconds(
+                smartSkipEnabled = ui.smartSkipEnabled,
+                preset = ui.officialSkipPreset,
+                manualSeconds = ui.skipIntroSeconds,
+            )
         if (!SkipSegmentPolicy.shouldApplyIntro(
-                skipIntroSeconds = _ui.value.skipIntroSeconds,
+                skipIntroSeconds = introSkipSeconds,
                 startPositionMs = currentSessionStartMs,
                 durationMs = st.durationMs,
                 alreadyApplied = skipIntroApplied,
@@ -1208,7 +1219,7 @@ class PlayerViewModel(
             if (currentSessionStartMs >= 1_000L) skipIntroApplied = true
             return
         }
-        val target = SkipSegmentPolicy.introSkipMs(_ui.value.skipIntroSeconds, st.durationMs)
+        val target = SkipSegmentPolicy.introSkipMs(introSkipSeconds, st.durationMs)
         if (target <= 0L || st.positionMs >= target - 500L) {
             skipIntroApplied = true
             return
@@ -1246,8 +1257,18 @@ class PlayerViewModel(
                     NextEpisodePreloadPolicy.shouldStart(
                         positionMs = st.positionMs,
                         durationMs = st.durationMs,
-                        introSkipSeconds = ui.skipIntroSeconds,
-                        outroSkipSeconds = ui.skipOutroSeconds,
+                        introSkipSeconds =
+                            EffectiveSkipSegmentPolicy.introSeconds(
+                                smartSkipEnabled = ui.smartSkipEnabled,
+                                preset = ui.officialSkipPreset,
+                                manualSeconds = ui.skipIntroSeconds,
+                            ),
+                        outroSkipSeconds =
+                            EffectiveSkipSegmentPolicy.outroSeconds(
+                                smartSkipEnabled = ui.smartSkipEnabled,
+                                preset = ui.officialSkipPreset,
+                                manualSeconds = ui.skipOutroSeconds,
+                            ),
                         hasNextEpisode = true,
                     )
                 }
@@ -1293,7 +1314,12 @@ class PlayerViewModel(
             episodeCount = ui.epCount,
         ) ?: return
         if (!SkipSegmentPolicy.shouldSkipOutro(
-                skipOutroSeconds = ui.skipOutroSeconds,
+                skipOutroSeconds =
+                    EffectiveSkipSegmentPolicy.outroSeconds(
+                        smartSkipEnabled = ui.smartSkipEnabled,
+                        preset = ui.officialSkipPreset,
+                        manualSeconds = ui.skipOutroSeconds,
+                    ),
                 positionMs = st.positionMs,
                 durationMs = st.durationMs,
                 hasNextEpisode = true,
@@ -1827,6 +1853,7 @@ class PlayerViewModel(
             engineId = engine.engineId,
             engineName = engine.displayName,
             aspectOrdinal = settings.current().aspectOrdinal,
+            officialSkipPreset = repo.officialSkipPreset(playerItem),
         )
 
         // 收集引擎状态镜像（与直播分支共用）
@@ -3747,6 +3774,12 @@ class PlayerViewModel(
         touch()
     }
 
+    fun setSmartSkipEnabled(enabled: Boolean) {
+        _ui.value = _ui.value.copy(smartSkipEnabled = enabled)
+        viewModelScope.launch { settings.setSmartSkipEnabled(enabled) }
+        touch()
+    }
+
     private fun startDanmakuForEpisode(
         item: com.qiubo.optimaltv.data.model.VodItem,
         episodeIndex: Int,
@@ -4102,6 +4135,7 @@ class PlayerViewModel(
                 playState = EnginePlayState.IDLE,
                 panel = Panel.NONE,
                 controlsVisible = false,
+                officialSkipPreset = repo.officialSkipPreset(refreshedItem),
             )
             val selectedLine = newLines[matchedLineIndex]
             val sourceEpisodes = repo.episodesForLine(refreshedItem, selectedLine)?.takeIf { refreshedIndex in it.indices }

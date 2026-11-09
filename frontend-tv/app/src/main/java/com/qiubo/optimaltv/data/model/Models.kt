@@ -99,6 +99,15 @@ data class OfficialPlaybackBinding(
     val line: OfficialPlaybackLine,
 )
 
+/** Community-derived intro/outro values supplied by the official catalogue detail. */
+@Immutable
+data class OfficialSkipPreset(
+    val introEndSeconds: Int,
+    val outroFromEndSeconds: Int,
+    val sampleCount: Int,
+    val reportCount: Int,
+)
+
 /** A playback-ready URL and the per-request properties supplied by the official line. */
 data class ResolvedPlaybackUrl(
     val url: String,
