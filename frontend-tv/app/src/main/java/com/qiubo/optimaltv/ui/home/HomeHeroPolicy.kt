@@ -2,7 +2,7 @@ package com.qiubo.optimaltv.ui.home
 
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.model.firstUsablePosterUrl
-import com.qiubo.optimaltv.data.source.HhkanSource.ChannelSection
+import com.qiubo.optimaltv.data.model.ChannelSection
 
 /** Selects popular catalogue titles for the TV hero carousel. */
 internal object HomeHeroPolicy {

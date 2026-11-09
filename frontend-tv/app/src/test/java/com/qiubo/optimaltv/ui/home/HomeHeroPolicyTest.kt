@@ -1,7 +1,7 @@
 package com.qiubo.optimaltv.ui.home
 
 import com.qiubo.optimaltv.data.model.VodItem
-import com.qiubo.optimaltv.data.source.HhkanSource.ChannelSection
+import com.qiubo.optimaltv.data.model.ChannelSection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -43,10 +43,6 @@ enum class DanmakuDisplayArea(
 }
 
 data class AppSettings(
-    val apiBaseUrl: String = "",
-    /** hhkan 聚合 API。默认指向 app 内置后端（EmbeddedBackend 本地跑，127.0.0.1）。
-     * 兼容外部后端：仍可在设置页改成其他局域网 IP。 */
-    val hhkanBaseUrl: String = "http://127.0.0.1:8090",
     val engineId: String = "media3",
     val aspectOrdinal: Int = 0,
     val speed: Float = 1.0f,
@@ -57,13 +53,13 @@ data class AppSettings(
     val danmakuScrollSpeed: Float = 1.0f,
     val skipIntroSeconds: Int = 0,
     val skipOutroSeconds: Int = 0,
+    /** Prefer official community intro/outro values, falling back to the manual seconds. */
+    val smartSkipEnabled: Boolean = true,
 )
 
 class SettingsStore(private val context: Context) {
 
     private object K {
-        val API_BASE = stringPreferencesKey("api_base_url")
-        val HHKAN_BASE = stringPreferencesKey("hhkan_base_url")
         val ENGINE = stringPreferencesKey("engine_id")
         val ASPECT = intPreferencesKey("aspect_mode")
         val SPEED = floatPreferencesKey("speed")
@@ -74,12 +70,11 @@ class SettingsStore(private val context: Context) {
         val DANMAKU_SCROLL_SPEED = floatPreferencesKey("danmaku_scroll_speed")
         val SKIP_INTRO_SECONDS = intPreferencesKey("skip_intro_seconds")
         val SKIP_OUTRO_SECONDS = intPreferencesKey("skip_outro_seconds")
+        val SMART_SKIP_ENABLED = booleanPreferencesKey("smart_skip_enabled")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
         AppSettings(
-            apiBaseUrl = p[K.API_BASE] ?: "",
-            hhkanBaseUrl = p[K.HHKAN_BASE] ?: "http://127.0.0.1:8090",
             engineId = p[K.ENGINE] ?: "media3",
             aspectOrdinal = p[K.ASPECT] ?: 0,
             speed = p[K.SPEED] ?: 1.0f,
@@ -91,13 +86,12 @@ class SettingsStore(private val context: Context) {
             danmakuScrollSpeed = (p[K.DANMAKU_SCROLL_SPEED] ?: 1.0f).coerceIn(0.5f, 2.0f),
             skipIntroSeconds = SkipSegmentSettings.clamp(p[K.SKIP_INTRO_SECONDS] ?: 0),
             skipOutroSeconds = SkipSegmentSettings.clamp(p[K.SKIP_OUTRO_SECONDS] ?: 0),
+            smartSkipEnabled = p[K.SMART_SKIP_ENABLED] ?: true,
         )
     }
 
     suspend fun current(): AppSettings = settings.first()
 
-    suspend fun setApiBase(url: String) = context.dataStore.edit { it[K.API_BASE] = url.trim() }
-    suspend fun setHhkanBase(url: String) = context.dataStore.edit { it[K.HHKAN_BASE] = url.trim() }
     suspend fun setEngine(id: String) = context.dataStore.edit { it[K.ENGINE] = id }
     suspend fun setAspect(ord: Int) = context.dataStore.edit { it[K.ASPECT] = ord }
     suspend fun setSpeed(v: Float) = context.dataStore.edit { it[K.SPEED] = v }
@@ -115,6 +109,8 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[K.SKIP_INTRO_SECONDS] = SkipSegmentSettings.clamp(seconds) }
     suspend fun setSkipOutroSeconds(seconds: Int) =
         context.dataStore.edit { it[K.SKIP_OUTRO_SECONDS] = SkipSegmentSettings.clamp(seconds) }
+    suspend fun setSmartSkipEnabled(enabled: Boolean) =
+        context.dataStore.edit { it[K.SMART_SKIP_ENABLED] = enabled }
 
     // ---- 线路记忆（技术方案 §3.2-3：每部影片上次成功的线路，下次直选）----
     private fun lineKey(vodId: String) = stringPreferencesKey("line:$vodId")
@@ -159,31 +155,6 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    // ---- IPTV 上次观看频道（v1.15 电视页「进入即播」）----
-    // 三个独立 key（分组名/频道名/URL 各存各的）：避免自行拼分隔符与频道名、URL 中的
-    // 特殊字符打架；恢复时优先 name+url 精确匹配，次选仅 name 匹配（同频道 URL 已更新）
-    private object IptvLast {
-        val GROUP = stringPreferencesKey("iptv_last_group")
-        val NAME = stringPreferencesKey("iptv_last_name")
-        val URL = stringPreferencesKey("iptv_last_url")
-    }
-
-    /** 上次观看频道（group/name/url），无历史返回 null */
-    suspend fun iptvLast(): Triple<String, String, String>? =
-        context.dataStore.data.first().let { p ->
-            val name = p[IptvLast.NAME] ?: return null
-            val url = p[IptvLast.URL] ?: return null
-            Triple(p[IptvLast.GROUP].orEmpty(), name, url)
-        }
-
-    suspend fun rememberIptvLast(group: String, name: String, url: String) {
-        context.dataStore.edit {
-            it[IptvLast.GROUP] = group
-            it[IptvLast.NAME] = name
-            it[IptvLast.URL] = url
-        }
-    }
-
     // ---- 全部影视页：上次选中类别（v1.16 需求：进页强制选中上次类别，不回「全部」）----
     private val ALL_LAST_CAT = stringPreferencesKey("all_last_cat")
 
@@ -202,15 +173,6 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { it[VOD_LAST_CAT] = cat }
     }
 
-    // ---- 足球直播：上次手动选择的信号源标识（2026-09-07 需求③：进直播默认直选；
-    // 旧源记忆由 VM 迁移到新线路默认 A2）----
-    private val LIVE_LAST_SRC = stringPreferencesKey("live_last_src")
-
-    suspend fun liveLastSrc(): String? = context.dataStore.data.first()[LIVE_LAST_SRC]
-
-    suspend fun rememberLiveLastSrc(src: String) {
-        context.dataStore.edit { it[LIVE_LAST_SRC] = src }
-    }
 }
 
 internal fun isAccountScopedSettingsKey(name: String): Boolean =

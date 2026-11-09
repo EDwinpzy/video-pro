@@ -9,18 +9,21 @@ lives in [Repository layout and release authority](repository-layout.md).
 
 | Product | `applicationId` | Version source | Status |
 | --- | --- | --- | --- |
-| Video Pro TV | `com.dongpiandi.videopro` | `frontend-tv/app/build.gradle` | Official release line; currently `0.3.3` (`versionCode 9`) |
+| Video Pro TV | `com.dongpiandi.videopro` | `frontend-tv/app/build.gradle` | Official release line; currently `1.0.0` (`versionCode 10`) |
 | Experimental KMP TV | `com.dongpiandi.videopro` | `app-tv/build.gradle.kts` | Reference only; currently `0.3.0` (`versionCode 6`), never publish |
 | Jellystack mobile | `app.jellystack.mobile` | `app-android/build.gradle.kts` | Inherited mobile line |
 | iOS | Not distributed | `app-ios` build configuration | Experimental; no supported App Store release |
 
-The version values in the table describe the repository state on 2026-11-08.
+The version values in the table describe the repository state on 2026-11-09.
 The owning Gradle file remains authoritative if this table drifts.
 
 `0.3.0` (`versionCode 6`) was published by the experimental KMP TV shell. The
 restored legacy frontend therefore started at `0.3.1` (`versionCode 7`) so it
 could replace that installation without reusing a code or presenting a
-downgrade; the current patch release is `0.3.3` (`versionCode 9`).
+downgrade. `0.3.3` (`versionCode 9`) was the last legacy-backend release.
+`1.0.0` (`versionCode 10`) is a major release because it removes the
+self-hosted backend, live/extra sources, hot update, authorisation, and
+activation flows while retaining the existing TV optimisations.
 
 The official and experimental TV trees share an application ID. Only
 `frontend-tv` may own that ID going forward. Do not bump `app-tv`, build it for
@@ -133,7 +136,7 @@ merges; force pushes to `main` are disabled.
 | --- | --- | --- |
 | Jellystack mobile | `v<versionName>` | `v0.16.0` |
 | Historical Jellystack TV | `v<versionName>-tv` | `v0.17.2-tv` |
-| Video Pro TV | `v<versionName>-videopro` | `v0.3.3-videopro` |
+| Video Pro TV | `v<versionName>-videopro` | `v1.0.0-videopro` |
 
 Use annotated tags for new releases and point them at the merged commit that
 produced the accepted artifact. Do not tag a pull-request head, a debug build,

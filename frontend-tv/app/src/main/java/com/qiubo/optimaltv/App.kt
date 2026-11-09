@@ -9,12 +9,10 @@ import coil.request.ImageRequest
 import coil.size.Scale
 import com.qiubo.optimaltv.data.db.AppDb
 import com.qiubo.optimaltv.data.model.isUsablePosterUrl
+import com.qiubo.optimaltv.data.net.SharedHttpClient
 import com.qiubo.optimaltv.data.prefs.SettingsStore
-import com.qiubo.optimaltv.data.repo.IptvRepository
-import com.qiubo.optimaltv.data.repo.LiveRepository
 import com.qiubo.optimaltv.data.repo.VodRepository
 import com.qiubo.optimaltv.data.repo.heroRefs
-import com.qiubo.optimaltv.data.source.RemoteApiSource
 import com.qiubo.optimaltv.data.source.DongpianOfficialLibraryClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -142,10 +140,6 @@ object Graph {
         private set
     lateinit var repo: VodRepository
         private set
-    lateinit var live: LiveRepository
-        private set
-    lateinit var iptv: IptvRepository
-        private set
     lateinit var officialLibrary: DongpianOfficialLibraryClient
         private set
 
@@ -154,10 +148,7 @@ object Graph {
         appContext = context.applicationContext
         db = AppDb.get(appContext)
         settings = SettingsStore(appContext)
-        repo = VodRepository(settings, RemoteApiSource.defaultClient(), appContext)
-        live = LiveRepository(settings, RemoteApiSource.defaultClient(), appContext)
-        // v1.13 电视直播：公开 IPTV m3u 源仓库（init 即读磁盘快照，拉取由电视页触发）
-        iptv = IptvRepository(appContext)
+        repo = VodRepository(settings, SharedHttpClient.default(), appContext)
         officialLibrary =
             DongpianOfficialLibraryClient(appContext) {
                 repo.clearAccountScopedCaches()
@@ -171,19 +162,13 @@ object Graph {
     }
 
     /** 图片双缓存（需求 影视#1：海报墙加载提速）——
-     *  内存 20% + 磁盘 256MB：海报墙反复滚动/回页全部命中本地，不再重复走后端代理；
-     *  读超时 45s：football-data 队标 SVG（~300KB）服务器很慢，默认 10s 会稳定超时
-     *  导致英超等球队队标全部回退字母占位（实测根因）。 */
+     *  内存 20% + 磁盘 256MB：海报墙反复滚动/回页全部命中本地。 */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun imageLoader(): ImageLoader = ImageLoader.Builder(appContext)
-        .components {
-            // 队标 SVG（football-data crests）解码支持
-            add(coil.decode.SvgDecoder.Factory())
-        }
         .okHttpClient {
             okhttp3.OkHttpClient.Builder()
                 .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 // Keep mobile-class TVs at one small wave. Thirty-two concurrent
                 // decodes starve the UI thread on a projector; faster hardware can
                 // still fill an entire poster row in one pass.
@@ -227,19 +212,13 @@ object Graph {
 }
 
 /**
- * 启动门闸（2026-09-19 用户拍板「方案 A+B」：首屏快优先，推翻 v1.32 全量预热门闸）：
+ * 启动门闸（2026-09-19 用户拍板「方案 A+B」：首屏快优先）：
  *
- * - v1.32~2026-09-18：「全量预热后再放行」——足球/IPTV/目录/影视三栏/封面，直至
- *   hero 前 6 条的片源匹配（单条 12~30s、预算 60s）全塞进启动门闸，进 app 30~90s，
- *   是「进入 app 的加载界面很慢」的主根因。
- * - 现行口径（方案 A+B，用户确认接受「秒点 hero 第一条可能等片源」的取舍）：
- *   门闸只等首屏必要内容：IPTV 磁盘快照、目录快照、后端就绪 + home + hero 简介（0.4s 快路径）+ hero 海报；
- *   会员状态在后台独立初始化，仅供用户主动打开会员页查看，不参与内容访问判定；
- *   足球赛程/IPTV 拉新/目录刷新/影视三栏/全量封面/首屏片源匹配全部转后台补，
- *   片源预热结果仍落 detailCache/detailInfoCache，用户浏览几秒后点开大概率已命中，
- *   未命中也有详情页「正在查找片源」等待态兜底。
- * - First paint now waits only for the local IPTV/catalog shells. Remote home,
- *   copy, image and source warming continue without covering the UI.
+ * - 门闸只等目录快照可读；没有快照时最多等 [FAST_GATE_MS]，不因网络慢而卡住登录页。
+ * - home、hero 简介/海报、影视三栏、全部封面和详情/片源预热都在后台补；
+ *   预热结果仍落 detailCache/detailInfoCache，用户浏览几秒后点开大概率已命中。
+ * - First paint waits only for a readable catalogue snapshot. Remote home, copy,
+ *   artwork and source warming continue without covering the UI.
  */
 object AppStartup {
     private val _ready = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -253,7 +232,7 @@ object AppStartup {
      */
     val status: kotlinx.coroutines.flow.StateFlow<String> = _status.asStateFlow()
 
-    /** 本地三件套（授权/IPTV 快照/目录快照）预算：本地资源秒出，5s 是弱机/首装硬上限 */
+    /** 目录快照预算：本地资源秒出，5s 是弱机/首装硬上限 */
     private const val FAST_GATE_MS = 5_000L
 
     /**
@@ -283,20 +262,9 @@ object AppStartup {
         val scope = kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val t0 = System.currentTimeMillis()
         _status.value = "正在准备…"
-        // 后台全量预热（方案 A：不挡门闸）：足球赛程 / IPTV 拉新 / 目录刷新 /
-        // 影视三栏+全量封面 / 首屏片源匹配。各自失败记日志，进页后按需兜底。
+        // 后台全量预热（方案 A：不挡门闸）：目录刷新 / 影视三栏+全量封面 /
+        // 首屏片源匹配。各自失败记日志，进页后按需兜底。
         scope.launch {
-            launch {
-                if (TvPerformanceProfile.isConstrained) StartupReadiness.awaitHomeFocus()
-                runCatching { Graph.live.matches() }
-                    .onFailure { OtvLog.w("后台预热：比赛列表失败（后台重试）: ${it.message}") }
-            }
-            launch {
-                if (TvPerformanceProfile.isConstrained) StartupReadiness.awaitHomeFocus()
-                delay(TvPerformanceProfile.backgroundWarmupDelayMs)
-                runCatching { Graph.iptv.refreshIfStale() }
-                    .onFailure { OtvLog.w("后台预热：电视源拉新失败（后台重试）: ${it.message}") }
-            }
             launch {
                 runCatching { Graph.repo.refresh() }
                     .onFailure { OtvLog.w("后台预热：目录刷新失败（后台重试）: ${it.message}") }
@@ -317,8 +285,7 @@ object AppStartup {
             try {
                 val settled = kotlinx.coroutines.withTimeoutOrNull(FIRST_PAINT_BUDGET_MS) {
                     _status.value = "正在连接服务器…"
-                    // This app opens the film home. An unrelated IPTV snapshot must not gate it.
-                    // 目录：快照恢复（磁盘/assets 种子）即就绪；首装无快照不死等网络
+                    // 目录：磁盘快照恢复即就绪；首装无快照不死等网络。
                     val cat = launch {
                         kotlinx.coroutines.withTimeoutOrNull(FAST_GATE_MS - 500) {
                             Graph.repo.awaitCatalogAvailable()
@@ -337,7 +304,7 @@ object AppStartup {
                 OtvLog.e("startup gate 异常（兜底放行）: ${e.message}")
             } finally {
                 OtvLog.i("startup gate 放行 ${System.currentTimeMillis() - t0}ms" +
-                    "（iptv=${Graph.iptv.state.value.channels.size} 频道, catalog=${Graph.repo.state.value.catalog != null}）")
+                    "（catalog=${Graph.repo.state.value.catalog != null}）")
                 _ready.value = true
             }
         }
@@ -354,15 +321,11 @@ object AppStartup {
     }
 
     /**
-     * 首屏预载（方案 B 分档：门闸只等这一档）：后端就绪 → home 首抓 →
-     * hero 简介（豆瓣快路径，实测 0.4s）并行预取 → hero 海报真实加载。
-     * 三栏/全量封面/片源匹配在 [preloadDeep] 后台跑，不在这里等。
+     * 首屏预载（方案 B 分档：门闸只等目录快照）：home 首抓 → hero 简介并行预取 →
+     * hero 海报真实加载。三栏/全量封面/片源匹配在 [preloadDeep] 后台跑。
      */
     private suspend fun preloadFirstScreen() {
         val t0 = System.currentTimeMillis()
-        // 内置后端（127.0.0.1:8090）冷启动需数秒：先等就绪再开抓，否则 home/hero 简介
-        // 全部 ConnectException 秒挂（首启实测踩过）
-        Graph.repo.awaitBackendReady()
         Graph.repo.refreshHome()
         Graph.repo.awaitHome()
         val heroIds = heroIds()
@@ -410,7 +373,6 @@ object AppStartup {
      */
     private suspend fun preloadDeep() {
         val t0 = System.currentTimeMillis()
-        Graph.repo.awaitBackendReady()
         Graph.repo.awaitCatalogAvailable()
         val cats = Graph.repo.state.value.catalog?.categories ?: return
         cats.forEach { Graph.repo.libBlocks(it.id) }       // 全部分类三块并行拉取（幂等）
@@ -555,35 +517,13 @@ class App : android.app.Application(), ImageLoaderFactory {
         super.onCreate()
         OtvLog.init(this)
         OtvLog.i("app onCreate — process start")
-        // v1.20：内嵌后端拆到 :backend 进程（热更新免杀 app、Service 通道可可靠重启）。
-        // 后端进程只起 python，其余组件（Graph/授权/热更/公告/门闸）一律不初始化
-        val procName = getProcessNameCompat()
-        if (procName.endsWith(":backend")) {
-            OtvLog.i("backend process：启动内嵌 python 后端")
-            EmbeddedBackend.ensureStarted(this)
-            return
-        }
         com.qiubo.optimaltv.lifecycle.AppLifecycleManager.init(this)
-        // 直播流解密桥：proxy.py 安卓模式 POST :8091/decrypt，WebView 执行播放器混淆 JS（需求 足球#1）
-        com.qiubo.optimaltv.playback.StreamDecryptServer.ensureStarted(this)
-        // 拉起 :backend 后端进程（App.onCreate 分叉内自启 python）
-        BackendService.ensure(this)
         Graph.init(this)
         com.qiubo.optimaltv.ui.components.OtvNav.debugLogging =
             BuildConfig.DEBUG && !TvPerformanceProfile.isConstrained
-        // v1.20 运营公告：启动拉取 + 周期轮询，顶部半透明悬浮窗展示（失败静默）
-        com.qiubo.optimaltv.announcement.AnnouncementManager.init(this)
         // Account-scoped HomeStartupGate loads the current five home feeds before entry.
         // Do not start the legacy warmup: it targets removed tabs and has a timed bypass.
     }
 
     override fun newImageLoader(): ImageLoader = Graph.imageLoader()
-
-    /** API 28+ 有 Application.getProcessName()；28 以下走 ActivityManager 兜底 */
-    private fun getProcessNameCompat(): String =
-        if (android.os.Build.VERSION.SDK_INT >= 28) getProcessName()
-        else runCatching {
-            val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-            am.runningAppProcesses?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName
-        }.getOrNull() ?: packageName
 }

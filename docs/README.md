@@ -2,20 +2,22 @@
 
 Start with the root [`README.md`](../README.md) for the product overview and
 the official build entry point. The current TV release is
-[`frontend-tv`](../frontend-tv), version `0.3.3` (`versionCode 9`). The root
+[`frontend-tv`](../frontend-tv), version `1.0.0` (`versionCode 10`). The root
 KMP `app-tv` and `design-tv` implementation is experimental and is not a
 release target.
 
 ## Start here
 
 - [Repository layout and release authority](repository-layout.md) - authoritative
-  source, experimental boundaries, generated files, and release certificate
+  source, experimental boundaries, generated files, and trust policy
 - [Building and verification](building.md) - official TV checks, inherited KMP
   checks, and device-test commands
 - [Versioning and releases](versioning.md) - current version source, Android
   version codes, tags, and release preparation
 - [Android TV and Fire TV](android-tv.md) - installation, device testing, and
   store-submission boundaries
+- [Dongpian-only TV audit](tv-dongpian-only-audit.md) - removed backend paths,
+  retained optimisations, and release verification
 - [`frontend-tv/README.md`](../frontend-tv/README.md) - TV product behavior,
   login recovery, build output, and focus ownership
 

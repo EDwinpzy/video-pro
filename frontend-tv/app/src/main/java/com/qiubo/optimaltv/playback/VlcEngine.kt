@@ -566,7 +566,7 @@ class VlcEngine(context: Context) : MediaEngine {
                 p.stop()
                 if (generation != mediaGeneration.get()) return@enqueueVlcOp
                 val media = buildMedia(
-                    VlcRelaySession.playbackUrl(request.url),
+                    request.url,
                     headers = request.headers,
                     userAgent = request.userAgent,
                 )

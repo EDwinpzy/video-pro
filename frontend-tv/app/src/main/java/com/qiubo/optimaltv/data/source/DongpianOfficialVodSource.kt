@@ -9,8 +9,10 @@ import com.qiubo.optimaltv.data.model.Episode
 import com.qiubo.optimaltv.data.model.LineInfo
 import com.qiubo.optimaltv.data.model.OfficialPlaybackBinding
 import com.qiubo.optimaltv.data.model.OfficialPlaybackLine
+import com.qiubo.optimaltv.data.model.OfficialSkipPreset
 import com.qiubo.optimaltv.data.model.VodItem
 import com.qiubo.optimaltv.data.model.firstUsablePosterUrl
+import com.qiubo.optimaltv.data.prefs.SkipSegmentSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -39,6 +41,11 @@ class DongpianOfficialVodSource(
         val carousel: List<VodItem>,
     )
 
+    data class BrowsePage(
+        val items: List<VodItem>,
+        val hasMore: Boolean,
+    )
+
     data class Detail(
         val item: VodItem,
         val episodes: List<Episode>,
@@ -46,6 +53,7 @@ class DongpianOfficialVodSource(
         val episodeSequenceIndices: List<Int?>,
         val episodeCount: Int,
         val contentKind: String,
+        val skipPreset: OfficialSkipPreset?,
     )
 
     data class Playback(
@@ -127,6 +135,48 @@ class DongpianOfficialVodSource(
         listOf("最近热门" to "sort=trending&window=day", "最近更新" to "intent=latest_catalog").map { (title, query) ->
             async { HomeSection(title, browseAll("kind=short_drama&$query", maxPages = if (title == "最近更新") 1 else Int.MAX_VALUE)) }
         }.awaitAll()
+    }
+
+    suspend fun browsePage(
+        category: String,
+        type: String = "",
+        area: String = "",
+        year: String = "",
+        rating: String = "",
+        sort: String = "",
+        page: Int = 1,
+        limit: Int = 48,
+    ): BrowsePage = withContext(Dispatchers.IO) {
+        val kind = when (category) {
+            "tv" -> "series"
+            "short" -> "short_drama"
+            else -> category
+        }
+        val params = linkedMapOf(
+            "kind" to kind,
+            "page" to page.coerceAtLeast(1).toString(),
+            "limit" to limit.coerceIn(1, 100).toString(),
+        )
+        if (type.isNotBlank()) params["genre"] = type
+        if (area.isNotBlank()) params["area"] = area
+        if (year.isNotBlank()) params["year"] = year
+        if (rating.isNotBlank()) params["rating"] = rating
+        when (sort) {
+            "new" -> params["intent"] = "latest_catalog"
+            "rating" -> params["sort"] = "rating"
+            else -> {
+                params["sort"] = "trending"
+                params["window"] = "total"
+            }
+        }
+        val query = params.entries.joinToString("&") { (key, value) ->
+            "$key=${URLEncoder.encode(value, "UTF-8")}"
+        }
+        val json = DongpianAuthClient.apiJson(context, "/v1/browse/catalog?$query")
+        BrowsePage(
+            items = parseCards(json.optJSONArray("cards") ?: JSONArray()),
+            hasMore = json.optJSONObject("pagination")?.optBoolean("has_more") == true,
+        )
     }
 
     suspend fun animeRecommendationSections(requireComplete: Boolean = false): List<HomeSection> = coroutineScope {
@@ -279,6 +329,10 @@ class DongpianOfficialVodSource(
                     .takeIf { it > 0 }
                     ?: parsed.size,
             contentKind = json.optString("content_kind"),
+            skipPreset =
+                OfficialSkipPresetParser.parse(
+                    json.optJSONObject("playback_skip_settings_preset"),
+                ),
         ).also { OtvLog.i("official detail ok episodes=${it.episodes.size}") }
     }
 
@@ -632,6 +686,34 @@ class DongpianOfficialVodSource(
             "anime" to "国漫",
             "variety" to "综艺",
             "short" to "短剧",
+        )
+    }
+}
+
+internal object OfficialSkipPresetParser {
+    private const val MIN_COMMUNITY_REPORTS = 3
+
+    fun parse(json: JSONObject?): OfficialSkipPreset? {
+        if (json == null) return null
+        if (json.optString("source").trim() != "community_median") return null
+        val sampleCount = json.optInt("sample_count", -1)
+        val reportCount = json.optInt("report_count", -1)
+        val introEndSeconds = json.optInt("intro_end_seconds", -1)
+        val outroFromEndSeconds = json.optInt("outro_from_end_seconds", -1)
+        if (sampleCount < MIN_COMMUNITY_REPORTS || reportCount < MIN_COMMUNITY_REPORTS) {
+            return null
+        }
+        if (introEndSeconds !in 0..SkipSegmentSettings.MAX_SECONDS ||
+            outroFromEndSeconds !in 0..SkipSegmentSettings.MAX_SECONDS
+        ) {
+            return null
+        }
+        if (introEndSeconds == 0 && outroFromEndSeconds == 0) return null
+        return OfficialSkipPreset(
+            introEndSeconds = introEndSeconds,
+            outroFromEndSeconds = outroFromEndSeconds,
+            sampleCount = sampleCount,
+            reportCount = reportCount,
         )
     }
 }

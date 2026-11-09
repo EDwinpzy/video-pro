@@ -44,8 +44,6 @@ data class PlaybackHealthSnapshot(
     val decoder: DecoderStats?,
     val viaRelay: Boolean,
     val relayBroken: Int,
-    val backendStarted: Boolean,
-    val decryptSlots: Int,
     val recoveryStep: Int,
     val stallRecoveries: Int,
     val note: String,
@@ -93,7 +91,6 @@ object PlaybackHealthLog {
             "frames=${d?.rendered ?: -1} drop=${d?.dropped ?: -1} dropIn=${d?.droppedInput ?: -1} " +
             "init=${d?.decoderInits ?: -1} streak=${d?.consecutiveDropped ?: -1} " +
             "relay=${yn(s.viaRelay)} relaysBroken=${s.relayBroken} " +
-            "backend=${yn(s.backendStarted)} slots=${s.decryptSlots} " +
             "recovery=${s.recoveryStep}/${s.stallRecoveries} " +
             "heap=${heapUsedMb()}/${heapMaxMb()}MB thr=${threadCount()} net=${network()}"
     }
@@ -119,8 +116,7 @@ object PlaybackHealthLog {
                     "inits=${d?.decoderInits ?: -1} maxStreak=${d?.consecutiveDropped ?: -1}",
             )
             appendLine(
-                "relay=${yn(s.viaRelay)} relaysBroken=${s.relayBroken} " +
-                    "backend=${yn(s.backendStarted)} decryptSlots=${s.decryptSlots}",
+                "relay=${yn(s.viaRelay)} relaysBroken=${s.relayBroken}",
             )
             appendLine(
                 "recovery=${s.recoveryStep}/${s.stallRecoveries} " +

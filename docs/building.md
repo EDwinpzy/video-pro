@@ -1,6 +1,6 @@
 # Building Jellystack
 
-> **Official TV build (2026-11-05):** Build from [`frontend-tv`](../frontend-tv),
+> **Official TV build (2026-11-09):** Build from [`frontend-tv`](../frontend-tv),
 > not from the root `:app-tv` module. The official gate is
 > `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`
 > after `Set-Location .\frontend-tv`. Root KMP commands below validate inherited

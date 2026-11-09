@@ -1,25 +1,31 @@
 # Video Pro TV frontend
 
-This is the authoritative TV application. Version `0.3.3` (`versionCode 9`)
-restores the complete legacy frontend after the experimental KMP TV shell and
-keeps all login, native-input, startup, focus, playback, and low-tier
-performance work.
+This is the authoritative TV application. Version `1.0.0` (`versionCode 10`)
+keeps the restored frontend's login, native-input, startup, focus, playback,
+caching, danmaku, and low-tier performance work while making the official
+Dongpian service the only data and playback backend.
 
 The version in `app/build.gradle` is authoritative. Repository-wide release
-rules, the experimental KMP boundary, and the migration-certificate policy are
-documented in
+rules and the experimental KMP boundary are documented in
 [`docs/repository-layout.md`](../docs/repository-layout.md) and
 [`docs/versioning.md`](../docs/versioning.md).
+The removed backend/source paths and retained optimisations are recorded in
+[`docs/tv-dongpian-only-audit.md`](../docs/tv-dongpian-only-audit.md).
+
+The TV app has no self-hosted backend. Account, home feeds, search, details,
+playback tickets, favorites, history, and danmaku all come from the official
+Dongpian service at `ai.dongpian20.com`. The internal `douban:` category keys
+are compatibility identifiers used by the official catalogue; they do not call
+a separate Douban service.
 
 Home tabs are movie, series, domestic animation, short drama, and variety,
 followed by search and account. Each hero shows up to five recent titles from
 its own category. The first recommendation section uses the official total
 ranking filtered by that category and displays two rows; other sections use
 one row. Movie and series sections use the corresponding official hot lists.
-Domestic animation uses Douban metadata, preserving the returned content
-type and omitting the Douban rating section. Short drama hot/new sections use
-the official short drama catalogue; the short drama tab also has no Douban
-rating section. Long episode lists in the player sidebar are grouped into
+Domestic animation uses the official catalogue metadata, preserving the
+returned content type. Short drama hot/new sections use the official short
+drama catalogue. Long episode lists in the player sidebar are grouped into
 pages so opening the panel does not build every episode row at once.
 Variety keeps only the category total ranking below its recent-history hero.
 
@@ -59,9 +65,8 @@ Build from this directory:
 
 The APK is written to `build\optimal-tv\app\outputs\apk\debug\app-debug.apk`.
 
-`app/src/main/assets/backend/python-backend.zip` is a required runtime asset.
-It is intentionally tracked so a fresh checkout can produce a working TV
-build; an APK without it has no local relay or source resolver.
+There is no embedded Python runtime, local relay, or source resolver. The APK
+contains only the official Dongpian transport and the media engines it needs.
 
 Account discovery uses a domestic DNS-over-HTTPS lookup with the system resolver
 as a fallback. This avoids intermittent login failures caused by a router DNS
@@ -87,10 +92,30 @@ release runtime's non-debuggable setting:
 .\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest -PprojectorRuntime=true
 ```
 
-This optional setting retains the local backend/update configuration and signing
-selection. Ordinary debug builds remain debuggable. The acceptance APK cannot use
-`run-as`, and debug-only route/fixture injection is disabled. Measure startup and
-frames on this variant separately from debuggable builds; do not mix their results.
+This optional setting retains the release runtime's non-debuggable behaviour
+and signing selection; it does not enable a local backend or update service.
+Ordinary debug builds remain debuggable. The acceptance APK cannot use
+`run-as`, and debug-only route/fixture injection is disabled. Measure startup
+and frames on this variant separately from debuggable builds; do not mix their
+results.
+
+## Retained TV optimisations
+
+The Dongpian-only cleanup deliberately keeps the performance and correctness
+work from `0.3.1`–`0.3.3`:
+
+- Media3's 48 MB sample queue cap and the 12 s adjacent-episode preload floor;
+- selected-engine and selected-line recovery for slow starts, with no silent
+  engine switch on a slow first frame;
+- the low-tier `TvPerformanceProfile` image/request limits and focus-scale
+  suppression;
+- TV focus-column clamping, focus restoration, and the constrained-device
+  native-focus path;
+- the 12 s danmaku window, two-segment memory policy, and bounded retries;
+- detail/episode prefetch, request sharing, stable line memory, and ticket
+  refresh;
+- continuous same-line retry for stalls and slow buffers, with an automatic
+  next-line fallback after two hard "switch line" responses.
 
 ## Voice search intent
 

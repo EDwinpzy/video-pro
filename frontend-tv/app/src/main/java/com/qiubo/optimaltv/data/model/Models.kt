@@ -8,28 +8,6 @@ data class Category(val id: String, val name: String)
 @Immutable
 data class Episode(val index: Int, val name: String, val url: String)
 
-/** Stable row read from the versioned metadata SQLite catalogue. */
-data class CatalogMedia(
-    val mytvId: String,
-    val mediaType: String,
-    val title: String,
-    val originalTitle: String = "",
-    val year: String = "",
-    val updatedAt: Long = 0L,
-    val overview: String = "",
-    val posterUrl: String = "",
-    val rating: Double = 0.0,
-    val popularity: Double = 0.0,
-    val genres: List<String> = emptyList(),
-    val regions: List<String> = emptyList(),
-    val externalIds: Map<String, String> = emptyMap(),
-    val actors: List<String> = emptyList(),
-    val directors: List<String> = emptyList(),
-    val searchTerms: List<String> = emptyList(),
-) {
-    val legacyRef: String? get() = externalIds["douban"]?.takeIf(String::isNotBlank)?.let { "douban:$it" }
-}
-
 enum class SourceAvailability {
     MATCHING, AVAILABLE, UNAVAILABLE;
 
@@ -97,6 +75,15 @@ data class OfficialPlaybackBinding(
     val episodeCount: Int?,
     val contentKind: String,
     val line: OfficialPlaybackLine,
+)
+
+/** Community-derived intro/outro values supplied by the official catalogue detail. */
+@Immutable
+data class OfficialSkipPreset(
+    val introEndSeconds: Int,
+    val outroFromEndSeconds: Int,
+    val sampleCount: Int,
+    val reportCount: Int,
 )
 
 /** A playback-ready URL and the per-request properties supplied by the official line. */
@@ -180,92 +167,3 @@ fun normalizeRemark(remark: String): String {
     val r = remark.trim()
     return Regex("^第(\\d+)集?已完结$").find(r)?.let { "全${it.groupValues[1]}集" } ?: r
 }
-
-// ---------- 足球直播（原版 /api/matches 等，1:1 复刻字段） ----------
-
-/** Match-list signal metadata; playback availability is determined by /api/stream on player open. */
-data class MatchChannel(
-    val src: String,
-    val id: String,
-    val name: String,
-)
-
-/** A football stream returned by the backend after resolving and probing one source. */
-data class LiveStreamSource(
-    val source: String,
-    val name: String,
-    /** Playback-ready URL wrapped by the local relay. */
-    val playbackUrl: String,
-    /** Source-specific page referer retained for renewal requests. */
-    val referer: String,
-)
-
-data class MatchItem(
-    val matchId: String,
-    val home: String,
-    val away: String,
-    val league: String = "",
-    val leagueColor: String = "",
-    val date: String = "",        // MM-DD
-    val time: String = "",        // 开赛时间或分钟数
-    val status: String = "",      // live / upcoming / finished（兼容旧 ended）
-    val minute: String = "",
-    val homeScore: String = "",   // score.h，空 = 无比分
-    val awayScore: String = "",
-    val channels: List<MatchChannel> = emptyList(),   // 站点比赛元数据；不作为播放器可用线路列表
-    val dateFull: String = "",   // YYYY-MM-DD 北京时间日期，用于精确开赛时间计算
-) {
-    /** 上游旧快照曾写 ended；统一由模型归一，避免卡片/点击链路各自判断出不同状态。 */
-    val isLive: Boolean get() = status.trim().equals("live", ignoreCase = true)
-    val isUpcoming: Boolean get() = status.trim().equals("upcoming", ignoreCase = true)
-    val isClockHeld: Boolean get() = status.trim().lowercase() in setOf(
-        "postponed", "delayed", "pending", "cancelled", "canceled", "abandoned",
-        "延期", "推迟", "待定", "取消", "腰斩",
-    )
-    val displayStatus: String get() = when (status.trim().lowercase()) {
-        "live" -> "直播中"
-        "upcoming" -> "未开赛"
-        "finished", "ended", "close", "ft", "完场", "完赛", "已结束", "已完赛", "赛后" -> "完场"
-        "postponed", "delayed", "延期", "推迟" -> "延期"
-        "pending", "待定" -> "待定"
-        "cancelled", "canceled", "取消" -> "取消"
-        "abandoned", "腰斩" -> "腰斩"
-        else -> status
-    }
-    val isFinished: Boolean get() = status.trim().equals("finished", ignoreCase = true) ||
-        status.trim().equals("ended", ignoreCase = true) ||
-        status.trim().equals("close", ignoreCase = true)
-    val hasScore: Boolean get() = homeScore.isNotEmpty() && awayScore.isNotEmpty()
-}
-
-/** 回看战报（/api/football-results） */
-data class ResultItem(
-    val home: String,
-    val away: String,
-    val h: String,
-    val a: String,
-    val title: String = "",
-    val url: String = "",
-)
-
-/** 集锦/回放视频（/api/football-videos，id = hhkan vid） */
-data class VideoItem(
-    val id: String,
-    val title: String,
-    val cover: String = "",
-    val league: String = "",
-    /** 两队名（后端从标题解析；无则空） */
-    val home: String = "",
-    val away: String = "",
-    /** 比分（后端匹配到对应场次才填，否则空） */
-    val h: String = "",
-    val a: String = "",
-)
-
-/** 足球新闻（/api/football-news） */
-data class NewsItem(
-    val title: String,
-    val img: String = "",
-    val time: String = "",
-    val content: String = "",
-)

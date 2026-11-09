@@ -1,42 +1,51 @@
 # Android TV, Google TV, and Fire TV
 
-> **Current release (2026-11-05):** The official TV app is
-> [`frontend-tv`](../frontend-tv), version `0.3.3` (`versionCode 9`). Its
+> **Current release (2026-11-09):** The official TV app is
+> [`frontend-tv`](../frontend-tv), version `1.0.0` (`versionCode 10`). Its
 > version source is `frontend-tv/app/build.gradle`. The root `app-tv` build and
 > package paths below document the experimental KMP migration and do not
 > produce the official release. See
 > [Repository layout and release authority](repository-layout.md).
 
-Video Pro is the remote-first Android TV product in the Jellystack-derived repository. The migration uses Dongpiandi's official account, catalog, history, and playback services with a dedicated Compose for TV interface.
+Video Pro is the remote-first Android TV product in the Jellystack-derived
+repository. The official app has no self-hosted backend and uses Dongpiandi's
+official account, catalogue, search, history, favourites, danmaku, and playback
+services at `https://ai.dongpian20.com`.
 
-It uses the package ID `com.dongpiandi.videopro`; its `versionName` and `versionCode` live in `app-tv/build.gradle.kts`. Version bumps, tag names, and release preparation follow [Versioning and releases](versioning.md).
+It uses the package ID `com.dongpiandi.videopro`; its `versionName` and
+`versionCode` live in `frontend-tv/app/build.gradle`. Version bumps, tag names,
+and release preparation follow [Versioning and releases](versioning.md).
 
 ## Supported devices
 
-- Android TV and Google TV on Android 7.0 or newer
-- Fire TV devices on Fire OS 6 or newer
+- Android TV, Google TV, and projector firmware reporting Android API 30 or
+  newer
 - 1080p and 4K landscape displays
 
-The TV app does not include downloads, Cast, App Lock, biometrics, the admin dashboard, picture-in-picture, or touch navigation.
+The official TV app does not include downloads, Cast, App Lock, biometrics, the
+admin dashboard, picture-in-picture, or touch navigation. The inherited Fire TV
+sections below describe the experimental KMP tree and are not the official
+release gate.
 
 ## Build
 
-Run all commands from the repository root with JDK 17:
+Run these commands with JDK 17 and the Android SDK configured:
 
 ```powershell
-.\gradlew.bat :app-android:assembleDebug
-.\gradlew.bat :app-tv:assembleDebug
-.\gradlew.bat :app-tv:assembleRelease :app-tv:bundleRelease
-.\gradlew.bat verifyUniqueAndroidVersionCodes :app-tv:verifyTvReleaseManifestPermissions
+Set-Location .\frontend-tv
+.\gradlew.bat :app:compileDebugKotlin
+.\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:lintDebug :app:assembleDebug
 ```
 
 Outputs:
 
-- Debug APK: `app-tv/build/outputs/apk/debug/app-tv-debug.apk`
-- Release APK: `app-tv/build/outputs/apk/release/app-tv-release.apk`
-- Release AAB: `app-tv/build/outputs/bundle/release/app-tv-release.aab`
+- Debug APK: `frontend-tv/build/optimal-tv/app/outputs/apk/debug/app-debug.apk`
+- Release APK: `frontend-tv/build/optimal-tv/app/outputs/apk/release/app-release.apk`
+- Archived release copy: `apk/TV版/MyTV-TV版.apk`
 
-The TV AAB is a local store artifact. It must not be committed or attached to a GitHub release.
+The release APK is a local artifact. It must not be committed or attached to a
+GitHub release.
 
 ## Emulator and Fire TV installation
 
@@ -44,7 +53,7 @@ List connected devices and install the debug build:
 
 ```powershell
 adb devices
-adb -s <serial> install -r app-tv/build/outputs/apk/debug/app-tv-debug.apk
+adb -s <serial> install -r frontend-tv/build/optimal-tv/app/outputs/apk/debug/app-debug.apk
 adb -s <serial> shell monkey -p com.dongpiandi.videopro -c android.intent.category.LEANBACK_LAUNCHER 1
 ```
 
@@ -118,7 +127,8 @@ the factory microphone route, or factory ASR quality. Those require a real-devic
 
 1. Enable the Android TV form factor for the existing Play Console app.
 2. Create a dedicated closed Android TV test track.
-3. Upload `app-tv-release.aab` with the `versionCode` from `app-tv/build.gradle.kts`.
+3. Upload the official release artifact with the `versionCode` from
+   `frontend-tv/app/build.gradle`.
 4. Upload `store-assets/tv/google-play-banner-320x180.png` as the localized TV banner.
 5. Upload at least two real 1920x1080 TV screenshots captured from a current build.
 6. Provide reusable English reviewer credentials and Quick Connect instructions under App Access.

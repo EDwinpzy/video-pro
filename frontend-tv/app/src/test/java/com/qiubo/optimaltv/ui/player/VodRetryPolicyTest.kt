@@ -15,6 +15,15 @@ class VodRetryPolicyTest {
     }
 
     @Test
+    fun `unavailable lines switch after two attempts while stalls keep retrying`() {
+        val unavailable = "所选影视源解析失败（播放线路返回了非视频地址，请切换线路或稍后重试。）"
+        assertFalse(VodRetryPolicy.shouldSwitchLineAfterFailure(unavailable, 1))
+        assertTrue(VodRetryPolicy.shouldSwitchLineAfterFailure(unavailable, 2))
+        assertFalse(VodRetryPolicy.shouldSwitchLineAfterFailure("播放卡顿，继续同线重试", 10))
+        assertFalse(VodRetryPolicy.shouldSwitchLineAfterFailure("首帧超时", 10))
+    }
+
+    @Test
     fun `boot exceptions keep the VOD retry loop alive without showing a fatal state`() {
         assertTrue(VodRetryPolicy.shouldRetryBootAfterAttempt(
             isLive = false,

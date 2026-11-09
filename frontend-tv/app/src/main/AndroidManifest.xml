@@ -84,11 +84,5 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- v1.20：内嵌 python 后端宿主（:backend 独立进程；热更新免杀 app 重启后端） -->
-        <service
-            android:name=".BackendService"
-            android:exported="false"
-            android:process=":backend" />
     </application>
 </manifest>
