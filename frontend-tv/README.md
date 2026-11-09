@@ -92,6 +92,23 @@ selection. Ordinary debug builds remain debuggable. The acceptance APK cannot us
 `run-as`, and debug-only route/fixture injection is disabled. Measure startup and
 frames on this variant separately from debuggable builds; do not mix their results.
 
+## Smart intro and outro skip
+
+The official catalogue detail carries a community-derived skip preset in
+`playback_skip_settings_preset`. It is a per-title median reported by
+viewers, not a per-episode analysis, so the player treats it as a suggestion:
+
+- The preset is only trusted when its source is `community_median` and both
+  the sample and report counts reach the server's minimum, so a couple of
+  stray reports never move the intro or outro boundary.
+- "智能跳过" in the player settings turns the preset on. When it is on, the
+  preset replaces the manual seconds; when it is off, the manual values apply
+  unchanged.
+- The manual "片头跳过" and "片尾跳过" rows stay available as the fallback for
+  titles without a preset.
+- An outro skip still requires a following episode, and the intro skip still
+  only applies to a fresh start, matching the manual behaviour.
+
 ## Voice search intent
 
 The global voice helper and other same-signature assistants can open the search
