@@ -1,5 +1,17 @@
 # Release Notes
 
+## 1.0.1 (Video Pro TV)
+
+- Keep voice search inside the running task when Video Pro is already visible.
+  The helper now sends a signature-protected in-app broadcast instead of trying
+  to start a new Activity while a player or detail page owns the foreground.
+- Navigate from playback or detail back to search reliably through both the
+  event stream and a lightweight pending-request fallback, so a foreground
+  navigation update cannot be lost.
+- Preserve first-result auto-open when the system search field echoes the
+  programmatically applied query, while cancelling that pending action when the
+  user edits the query.
+
 ## 1.0.0 (Video Pro TV)
 
 - Make the official TV app Dongpian-only: account, home feeds, catalogue,
