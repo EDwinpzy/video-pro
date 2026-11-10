@@ -254,6 +254,10 @@ private fun AppRoot(
     LaunchedEffect(Unit) {
         com.qiubo.optimaltv.voice.VoiceSearchBus.updates.collectLatest {
             com.qiubo.optimaltv.voice.VoiceSearchBus.takeNavigationRequest()?.let {
+                com.qiubo.optimaltv.OtvLog.i(
+                    "voice-search event navigation chars=${it.query.length} " +
+                        "route=${nav.currentDestination?.route}",
+                )
                 nav.navigate("search") { launchSingleTop = true }
             }
         }
@@ -262,6 +266,15 @@ private fun AppRoot(
     // 调试直达播放页：debug 广播 → pending 消费（详见 DebugNavBus；release 无写入方）
     LaunchedEffect(Unit) {
         while (true) {
+            // StateFlow 更新在前台播放器/详情页可能错过；同一组合内的轮询兜底保证
+            // 已提交的语音查询仍能把现有任务导航到搜索页。
+            com.qiubo.optimaltv.voice.VoiceSearchBus.takeNavigationRequest()?.let {
+                com.qiubo.optimaltv.OtvLog.i(
+                    "voice-search poll navigation chars=${it.query.length} " +
+                        "route=${nav.currentDestination?.route}",
+                )
+                nav.navigate("search") { launchSingleTop = true }
+            }
             DebugNavBus.pendingDetailId?.let { id ->
                 DebugNavBus.pendingDetailId = null
                 nav.navigate("detail/" + java.net.URLEncoder.encode(id, "UTF-8"))

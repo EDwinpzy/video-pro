@@ -71,6 +71,15 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".voice.VoiceSearchReceiver"
+            android:exported="true"
+            android:permission="com.dongpiandi.videopro.permission.VOICE_SEARCH">
+            <intent-filter>
+                <action android:name="com.dongpiandi.videopro.action.OPEN_SEARCH_IN_APP" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode"

@@ -33,8 +33,12 @@ object AppLifecycleManager {
     val refreshEpoch: StateFlow<Long> = _refreshEpoch.asStateFlow()
 
     @Volatile private var backgroundedAtMs = 0L
+    @Volatile private var foreground = false
     private var connectivity: ConnectivityManager? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
+
+    val isForeground: Boolean
+        get() = foreground
 
     fun init(context: Context) {
         if (!initialized.compareAndSet(false, true)) return
@@ -47,10 +51,12 @@ object AppLifecycleManager {
     }
 
     fun onBackground() {
+        foreground = false
         if (backgroundedAtMs == 0L) backgroundedAtMs = SystemClock.elapsedRealtime()
     }
 
     fun onForeground() {
+        foreground = true
         if (backgroundedAtMs > 0L) {
             backgroundedAtMs = 0L
             signalRefresh()
@@ -62,6 +68,7 @@ object AppLifecycleManager {
     }
 
     fun shutdown() {
+        foreground = false
         callback?.let { cb -> runCatching { connectivity?.unregisterNetworkCallback(cb) } }
         callback = null
         connectivity = null

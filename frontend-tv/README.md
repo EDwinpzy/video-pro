@@ -1,6 +1,6 @@
 # Video Pro TV frontend
 
-This is the authoritative TV application. Version `1.0.0` (`versionCode 10`)
+This is the authoritative TV application. Version `1.0.1` (`versionCode 11`)
 keeps the restored frontend's login, native-input, startup, focus, playback,
 caching, danmaku, and low-tier performance work while making the official
 Dongpian service the only data and playback backend.
@@ -119,14 +119,30 @@ work from `0.3.1`–`0.3.3`:
 
 ## Voice search intent
 
-The global voice helper and other same-signature assistants can open the search
-flow through `VoiceSearchActivity`:
+The global voice helper and other same-signature assistants use two routes.
+When Video Pro is already visible, the helper sends an app-local broadcast so
+Android's background-Activity restrictions cannot drop the request:
+
+- Action: `com.dongpiandi.videopro.action.OPEN_SEARCH_IN_APP`
+- Receiver: `com.qiubo.optimaltv.voice.VoiceSearchReceiver`
+- The receiver has the same signature permission and ignores events unless
+  `AppLifecycleManager.isForeground` is true
+- Accepted events enter `VoiceSearchBus` in the running process
+
+From another app, use the signature-protected `VoiceSearchActivity`:
 
 - Action: `com.dongpiandi.videopro.action.OPEN_SEARCH`
 - Required permission: `com.dongpiandi.videopro.permission.VOICE_SEARCH`
   (`signature`)
 - Extra `query`: normalized search text, limited to 80 characters
 - Extra `openFirstResult`: optional Boolean, default `false`
+
+Both routes use the same extras and search pipeline. The helper checks the
+Accessibility window owner before choosing the in-app receiver; it does not send
+delayed D-pad inputs after the request. If `openFirstResult=true`, the app waits
+for the native search field to submit, then opens the first detail route only
+when the query still matches the pending voice request. A later manual edit
+cancels that pending behavior.
 
 Use `openFirstResult=true` only for explicit view/play commands such as
 “播放” or “我要看”. Those requests may open the first result after it loads.

@@ -1,7 +1,7 @@
 # Android TV, Google TV, and Fire TV
 
-> **Current release (2026-11-09):** The official TV app is
-> [`frontend-tv`](../frontend-tv), version `1.0.0` (`versionCode 10`). Its
+> **Current release (2026-11-10):** The official TV app is
+> [`frontend-tv`](../frontend-tv), version `1.0.1` (`versionCode 11`). Its
 > version source is `frontend-tv/app/build.gradle`. The root `app-tv` build and
 > package paths below document the experimental KMP migration and do not
 > produce the official release. See

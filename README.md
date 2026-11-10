@@ -10,7 +10,7 @@ experimental migration work.
 | Item | Value |
 | --- | --- |
 | Release source | [`frontend-tv`](frontend-tv) |
-| Current version | `1.0.0` (`versionCode 10`) |
+| Current version | `1.0.1` (`versionCode 11`) |
 | Version authority | `frontend-tv/app/build.gradle` |
 | Android package | `com.dongpiandi.videopro` |
 | Release status | Current Android TV application |

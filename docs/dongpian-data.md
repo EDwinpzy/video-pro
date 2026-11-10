@@ -1,8 +1,8 @@
 # Dongpiandi Data
 
-> **Status (2026-11-09):** This module is part of the experimental KMP TV
+> **Status (2026-11-10):** This module is part of the experimental KMP TV
 > migration. The official TV application is
-> [`frontend-tv`](../frontend-tv), version `1.0.0` (`versionCode 10`). Do not
+> [`frontend-tv`](../frontend-tv), version `1.0.1` (`versionCode 11`). Do not
 > treat `dongpian-data` as the release implementation. See
 > [Repository layout and release authority](repository-layout.md).
 

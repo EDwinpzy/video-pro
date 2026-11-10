@@ -14,6 +14,33 @@ class VoiceSearchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val request = VoiceSearchContract.requestFromIntent(intent)
+        android.util.Log.i(
+            "VoiceSearchEntry",
+            "onCreate action=${intent?.action} queryChars=${request?.query?.length ?: 0}",
+        )
+        if (request != null) {
+            VoiceSearchBus.submit(request)
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                    )
+                },
+            )
+        }
+        finish()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val request = VoiceSearchContract.requestFromIntent(intent)
+        android.util.Log.i(
+            "VoiceSearchEntry",
+            "onNewIntent action=${intent.action} queryChars=${request?.query?.length ?: 0}",
+        )
         if (request != null) {
             VoiceSearchBus.submit(request)
             startActivity(

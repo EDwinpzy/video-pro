@@ -55,4 +55,11 @@ class SearchFocusPolicyTest {
         assertTrue(searchFocusFixtureItems(0).isEmpty())
         assertEquals(60, searchFocusFixtureItems(100).size)
     }
+
+    @Test
+    fun programmaticEchoKeepsAutoOpenButUserEditsCancelIt() {
+        assertFalse(shouldClearPendingFirstResult("三国演义", "三国演义"))
+        assertTrue(shouldClearPendingFirstResult("三国演", "三国演义"))
+        assertFalse(shouldClearPendingFirstResult("三国演义", null))
+    }
 }
