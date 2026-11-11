@@ -70,6 +70,9 @@ import com.qiubo.optimaltv.ui.theme.sxs
 import com.qiubo.optimaltv.ui.theme.sx
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import androidx.compose.runtime.mutableStateMapOf
 import java.net.URLEncoder
 
@@ -292,7 +295,13 @@ private fun CategoryVodScreen(
             }
         }
     }
-    val sectionMoveInFlight = remember { booleanArrayOf(false) }
+    var sectionMoveJob by remember { mutableStateOf<Job?>(null) }
+    DisposableEffect(categoryKey) {
+        onDispose {
+            sectionMoveJob?.cancel()
+            sectionMoveJob = null
+        }
+    }
     val sectionFocusedColumn = remember(categoryKey) { IntArray(sectionTitles.size) }
     fun sectionEntries(index: Int): List<VodItem> =
         categorySections.firstOrNull { it.name == sectionTitles.getOrNull(index) }?.items.orEmpty()
@@ -306,46 +315,49 @@ private fun CategoryVodScreen(
             rows = rows,
         )
     }
-    fun focusSection(targetIndex: Int) {
+    fun startSectionMove(targetIndex: Int, column: Int) {
         if (targetIndex !in sectionTitles.indices) return
-        heroFocusScope.launch {
-            try {
-                val column = sectionFocusedColumn[targetIndex].coerceIn(0, sectionLastColumn(targetIndex))
-                sectionFocusedColumn[targetIndex] = column
-                val focused =
-                    focusHomeSection(
-                        listState = vodListState,
-                        targetIndex = targetIndex,
-                        firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(column) {
-                            FocusRequester()
-                        },
-                    )
-                if (!focused) {
-                    // A section may have fewer columns than the one we came from.
-                    // Falling back to its first card keeps the D-pad alive instead of
-                    // leaving focus on the previous row for every subsequent press.
-                    sectionFocusedColumn[targetIndex] = 0
-                    focusHomeSection(
-                        listState = vodListState,
-                        targetIndex = targetIndex,
-                        firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(0) {
-                            FocusRequester()
-                        },
-                    )
+        val job =
+            heroFocusScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    sectionFocusedColumn[targetIndex] = column
+                    val focused =
+                        focusHomeSection(
+                            listState = vodListState,
+                            targetIndex = targetIndex,
+                            firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(column) {
+                                FocusRequester()
+                            },
+                        )
+                    if (!focused) {
+                        // A section may have fewer columns than the one we came from.
+                        // Falling back to its first card keeps the D-pad alive instead of
+                        // leaving focus on the previous row for every subsequent press.
+                        sectionFocusedColumn[targetIndex] = 0
+                        focusHomeSection(
+                            listState = vodListState,
+                            targetIndex = targetIndex,
+                            firstCardFocus = sectionCardFocusRequesters[targetIndex].getOrPut(0) {
+                                FocusRequester()
+                            },
+                        )
+                    }
+                } finally {
+                    if (sectionMoveJob === currentCoroutineContext()[Job]) {
+                        sectionMoveJob = null
+                    }
                 }
-            } finally {
-                sectionMoveInFlight[0] = false
             }
-        }
+        sectionMoveJob = job
+        job.start()
     }
     fun moveSection(fromIndex: Int, step: Int, column: Int = 0): Boolean {
-        if (sectionMoveInFlight[0]) return true
+        if (sectionMoveJob?.isActive == true) return true
         var target = fromIndex + step
         while (target in sectionTitles.indices) {
             if (sectionEntries(target).isNotEmpty()) {
-                sectionFocusedColumn[target] = column.coerceIn(0, sectionLastColumn(target))
-                sectionMoveInFlight[0] = true
-                focusSection(target)
+                val targetColumn = column.coerceIn(0, sectionLastColumn(target))
+                startSectionMove(target, targetColumn)
                 return true
             }
             target += step

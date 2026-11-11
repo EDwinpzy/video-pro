@@ -11,7 +11,14 @@ class HomeFeedLayoutTest {
     private fun item(id: String) = VodItem(id, "fixture", id, "movie")
 
     @Test fun categoryRankingsCannotLeakContentFromOtherTabs() {
-        val ranking = listOf("movie", "tv", "anime", "short", "variety").map { item(it).copy(categoryId = "douban:$it", area = "中国大陆") }
+        val ranking =
+            listOf("movie", "tv", "anime", "short", "variety").map {
+                item(it).copy(
+                    categoryId = "douban:$it",
+                    area = "中国大陆",
+                    tags = if (it == "anime") listOf("动漫", "国产动漫", "3D") else emptyList(),
+                )
+            }
         listOf("movie", "tv", "anime", "short", "variety").forEach { category ->
             assertEquals(listOf(category), HomeFeedLayout.sections(category, ranking, emptyList(), emptyList()).first().items.map { it.id })
         }
@@ -40,7 +47,12 @@ class HomeFeedLayoutTest {
         assertEquals(listOf("最近热门", "最近更新"), titles.drop(1))
         assertTrue("豆瓣高分" in HomeFeedLayout.titles("documentary"))
 
-        fun anime(id: String) = item(id).copy(categoryId = "douban:anime", area = "中国大陆")
+        fun anime(id: String) =
+            item(id).copy(
+                categoryId = "douban:anime",
+                area = "中国大陆",
+                tags = listOf("动漫", "国产动漫", "3D"),
+            )
         val douban =
             listOf(
                 ChannelSection("最近热门", listOf(anime("hot"))),
@@ -49,5 +61,33 @@ class HomeFeedLayoutTest {
             )
         val sections = HomeFeedLayout.sections("anime", emptyList(), emptyList(), douban)
         assertFalse(sections.any { it.name == "豆瓣高分" })
+    }
+
+    @Test fun animeKeepsOnlyDomestic3DAnimation() {
+        val mixed = listOf(
+            item("live-action")
+                .copy(categoryId = "douban:anime", area = "中国大陆", tags = listOf("动漫")),
+            item("live-action-no-area")
+                .copy(categoryId = "douban:anime", area = "", tags = listOf("动漫")),
+            item("japanese-anime")
+                .copy(categoryId = "douban:anime", area = "日本", tags = listOf("日韩动漫", "动漫", "3D")),
+            item("domestic-2d-anime")
+                .copy(categoryId = "douban:anime", area = "中国大陆", tags = listOf("国产动漫", "动漫", "奇幻")),
+            item("domestic-3d-anime")
+                .copy(categoryId = "douban:anime", area = "中国大陆", tags = listOf("国产动漫", "动漫", "3D", "奇幻")),
+            item("domestic-3d-animation")
+                .copy(categoryId = "douban:anime", area = "", tags = listOf("国产动漫", "动漫", "3D动画")),
+        )
+        val sections =
+            HomeFeedLayout.sections(
+                "anime",
+                emptyList(),
+                emptyList(),
+                listOf(ChannelSection("最近更新", mixed)),
+            )
+        assertEquals(
+            listOf("domestic-3d-anime", "domestic-3d-animation"),
+            sections.first { it.name == "最近更新" }.items.map { it.id },
+        )
     }
 }

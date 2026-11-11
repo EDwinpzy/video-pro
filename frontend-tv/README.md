@@ -1,6 +1,6 @@
 # Video Pro TV frontend
 
-This is the authoritative TV application. Version `1.0.1` (`versionCode 11`)
+This is the authoritative TV application. Version `1.0.2` (`versionCode 12`)
 keeps the restored frontend's login, native-input, startup, focus, playback,
 caching, danmaku, and low-tier performance work while making the official
 Dongpian service the only data and playback backend.
@@ -23,10 +23,11 @@ followed by search and account. Each hero shows up to five recent titles from
 its own category. The first recommendation section uses the official total
 ranking filtered by that category and displays two rows; other sections use
 one row. Movie and series sections use the corresponding official hot lists.
-Domestic animation uses the official catalogue metadata, preserving the
-returned content type. Short drama hot/new sections use the official short
-drama catalogue. Long episode lists in the player sidebar are grouped into
-pages so opening the panel does not build every episode row at once.
+3D domestic animation uses the official `3D` and `3D动画` catalogue genres and
+requires domestic metadata, because the broad anime catalogue can classify
+live-action and 2D titles as anime. Short drama hot/new sections use the
+official short drama catalogue. Long episode lists in the player sidebar are
+grouped into pages so opening the panel does not build every episode row at once.
 Variety keeps only the category total ranking below its recent-history hero.
 
 After sign-in, an animated startup screen waits for all five category feeds and

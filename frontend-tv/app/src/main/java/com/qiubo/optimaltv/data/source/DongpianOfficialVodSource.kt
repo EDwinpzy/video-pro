@@ -68,6 +68,12 @@ class DongpianOfficialVodSource(
         val sequenceIndex: Int?,
     )
 
+    private data class CatalogEntry(
+        val item: VodItem,
+        val updatedAt: Long,
+        val heatValue: Double,
+    )
+
     private val officialResolvedLines =
         java.util.concurrent.ConcurrentHashMap<String, OfficialPlaybackLine>()
     private val officialLatestBindings =
@@ -122,6 +128,9 @@ class DongpianOfficialVodSource(
     }
 
     suspend fun totalRanking(category: String = ""): List<VodItem> {
+        if (category == "anime") {
+            return browseAnime3d("", latest = false)
+        }
         val kind = when (category) {
             "tv" -> "series"
             "short" -> "short_drama"
@@ -181,16 +190,13 @@ class DongpianOfficialVodSource(
 
     suspend fun animeRecommendationSections(requireComplete: Boolean = false): List<HomeSection> = coroutineScope {
         listOf(
-            "最近热门" to "sort=trending&window=day",
+            "最近热门" to "",
             "最近更新" to "intent=latest_catalog",
         ).map { (title, query) ->
             async {
                 val items = recommendationSlots.withPermit {
                     try {
-                        browseAll(
-                            "kind=anime&$query",
-                            maxPages = 1,
-                        )
+                        browseAnime3d(query, latest = title == "最近更新")
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {
@@ -203,6 +209,39 @@ class DongpianOfficialVodSource(
             }
         }.awaitAll()
     }
+
+    private suspend fun browseAnime3d(
+        query: String,
+        latest: Boolean,
+    ): List<VodItem> {
+        val baseQuery =
+            listOf("kind=anime", query)
+                .filter(String::isNotBlank)
+                .joinToString("&")
+        val entries =
+            ANIME_3D_GENRES.flatMap { genre ->
+                val encodedGenre = URLEncoder.encode(genre, "UTF-8")
+                browseAllCatalogEntries(
+                    "$baseQuery&genre=$encodedGenre",
+                    maxPages = 1,
+                )
+            }
+        return entries
+            .groupBy { it.item.id }
+            .values
+            .map { duplicates -> duplicates.maxBy(CatalogEntry::updatedAt) }
+            .sortedWith(animeEntryOrder(latest))
+            .map(CatalogEntry::item)
+    }
+
+    private fun animeEntryOrder(latest: Boolean): Comparator<CatalogEntry> =
+        if (latest) {
+            compareByDescending<CatalogEntry> { it.updatedAt }
+                .thenByDescending { it.heatValue }
+        } else {
+            compareByDescending<CatalogEntry> { it.heatValue }
+                .thenByDescending { it.updatedAt }
+        }
 
     suspend fun recommendationSections(
         category: String,
@@ -238,8 +277,14 @@ class DongpianOfficialVodSource(
         }.awaitAll()
     }
 
-    private suspend fun browseAll(query: String, maxPages: Int = Int.MAX_VALUE): List<VodItem> = withContext(Dispatchers.IO) {
-        val items = linkedMapOf<String, VodItem>()
+    private suspend fun browseAll(query: String, maxPages: Int = Int.MAX_VALUE): List<VodItem> =
+        browseAllCatalogEntries(query, maxPages).map(CatalogEntry::item)
+
+    private suspend fun browseAllCatalogEntries(
+        query: String,
+        maxPages: Int = Int.MAX_VALUE,
+    ): List<CatalogEntry> = withContext(Dispatchers.IO) {
+        val entries = linkedMapOf<String, CatalogEntry>()
         var page = 1
         while (true) {
             val json = playbackApi(
@@ -248,16 +293,16 @@ class DongpianOfficialVodSource(
                 "GET",
                 null,
             )
-            val cards = parseCards(json.optJSONArray("cards") ?: JSONArray())
-            val previousCount = items.size
-            cards.forEach { items.putIfAbsent(it.id, it) }
+            val cards = parseCardEntries(json.optJSONArray("cards") ?: JSONArray())
+            val previousCount = entries.size
+            cards.forEach { entries.putIfAbsent(it.item.id, it) }
             val pagination = json.optJSONObject("pagination")
-            if (items.size == previousCount || pagination?.optBoolean("has_more") != true || page >= maxPages) break
+            if (entries.size == previousCount || pagination?.optBoolean("has_more") != true || page >= maxPages) break
             val next = pagination.optInt("next_page", page + 1)
             if (next <= page) break
             page = next
         }
-        items.values.toList()
+        entries.values.toList()
     }
 
     suspend fun search(
@@ -596,11 +641,24 @@ class DongpianOfficialVodSource(
         runCatching { java.net.URI(url).host.orEmpty() }.getOrDefault("")
 
     private fun parseCards(cards: JSONArray): List<VodItem> =
+        parseCardEntries(cards).map(CatalogEntry::item)
+
+    private fun parseCardEntries(cards: JSONArray): List<CatalogEntry> =
         cards.orEmpty().mapNotNull { raw ->
             val obj = raw as? JSONObject ?: return@mapNotNull null
-            parseCard(obj)
-        }.filter { it.id.removePrefix("dongpian:").isNotBlank() && it.title.isNotBlank() }
-            .distinctBy(VodItem::id)
+            val item = parseCard(obj) ?: return@mapNotNull null
+            CatalogEntry(
+                item = item,
+                updatedAt = parseUpdatedAt(obj),
+                heatValue = obj.optDouble("heat_value", 0.0),
+            )
+        }.filter { it.item.id.removePrefix("dongpian:").isNotBlank() && it.item.title.isNotBlank() }
+            .distinctBy { it.item.id }
+
+    private fun parseUpdatedAt(json: JSONObject): Long =
+        runCatching {
+            java.time.Instant.parse(json.optString("updated_at")).toEpochMilli()
+        }.getOrDefault(0L)
 
     private fun parseCard(json: JSONObject): VodItem? {
         val variant =
@@ -680,6 +738,7 @@ class DongpianOfficialVodSource(
         (0 until parent.length()).firstOrNull { parent.optJSONObject(it) === target } ?: 0
 
     private companion object {
+        val ANIME_3D_GENRES = listOf("3D", "3D动画")
         val CATEGORY_LABELS = listOf(
             "movie" to "电影",
             "tv" to "电视剧",

@@ -1,5 +1,16 @@
 # Release Notes
 
+## 1.0.2 (Video Pro TV)
+
+- Keep D-pad focus moving through Home recommendation sections after rapid or
+  cancelled section changes, including 大家在看 → 最近热门 → 最近更新.
+- Limit the 国漫 feed to official 3D catalogue genres and domestic metadata, so
+  live-action and 2D titles no longer appear in 最近更新.
+- Merge the official `3D` and `3D动画` genres by update time for 最近更新, and
+  fill 3D hot rows from the catalogue when the backend's filtered trending feed
+  returns only one title.
+- Build the `1.0.2` (`versionCode 12`) signed TV APK from `frontend-tv` only.
+
 ## 1.0.1 (Video Pro TV)
 
 - Keep voice search inside the running task when Video Pro is already visible.

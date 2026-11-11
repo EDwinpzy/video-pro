@@ -32,7 +32,21 @@ internal object HomeFeedLayout {
     fun matchesCategory(item: VodItem, category: String): Boolean {
         val kind = item.categoryId.removePrefix("douban:")
         if (kind != category && !(category == "tv" && kind == "series")) return false
-        if (category != "anime" || item.area.isBlank()) return true
-        return listOf("中国", "大陆", "内地", "国产", "香港", "台湾", "China", "CN").any { item.area.contains(it, ignoreCase = true) }
+        if (category != "anime") return true
+        val area = item.area.trim()
+        val domesticArea =
+            DOMESTIC_ANIME_AREAS.any { area.contains(it, ignoreCase = true) }
+        val domesticAnimationEvidence =
+            item.tags.any { tag ->
+                DOMESTIC_ANIMATION_TAGS.any { marker -> tag.contains(marker, ignoreCase = true) }
+            }
+        val threeDimensionalEvidence =
+            item.tags.any { tag -> THREE_DIMENSIONAL_TAGS.any { marker -> tag.contains(marker, ignoreCase = true) } }
+        return threeDimensionalEvidence && (domesticArea || domesticAnimationEvidence)
     }
+
+    private val DOMESTIC_ANIME_AREAS =
+        listOf("中国", "大陆", "内地", "国产", "香港", "台湾", "China", "CN")
+    private val DOMESTIC_ANIMATION_TAGS = listOf("国产动漫", "中国动漫", "国漫")
+    private val THREE_DIMENSIONAL_TAGS = listOf("3D")
 }
