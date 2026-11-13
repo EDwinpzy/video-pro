@@ -77,6 +77,8 @@ object DongpianAuthClient {
     private const val SIGNING_KEY_TTL_MS = 10 * 60 * 1000L
     private const val NETWORK_ERROR = "网络连接失败，请检查网络后重试。"
     private val accountPattern = Regex("^[a-z0-9][a-z0-9._@+-]{2,127}$", RegexOption.IGNORE_CASE)
+    private val signingKeyPattern = Regex("""["']([0-9a-f]{64})["']""")
+    private const val SIGNING_HEADER = "x-ai-movie-signature"
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val http =
@@ -557,11 +559,27 @@ object DongpianAuthClient {
                 ?.groupValues
                 ?.getOrNull(1)
         val runtimeScript = runtimeName?.let { getText("$BASE_URL/assets/$it", "signing_runtime") }
-        val keyPattern = Regex("""Jo\s*=\s*["']([0-9a-f]{64})["']""")
-        return (
-            runtimeScript?.let { keyPattern.find(it)?.groupValues?.getOrNull(1) }
-                ?: keyPattern.find(mainScript)?.groupValues?.getOrNull(1)
-        ) ?: throw DongpianAuthException("无法读取登录签名配置，请稍后重试。")
+        return extractSigningKey(runtimeScript, mainScript)
+            ?: throw DongpianAuthException("无法读取登录签名配置，请稍后重试。")
+    }
+
+    internal fun extractSigningKey(vararg scripts: String?): String? {
+        val bundles = scripts.filterNotNull()
+        bundles.forEach { script ->
+            val headerIndex = script.indexOf(SIGNING_HEADER)
+            if (headerIndex < 0) return@forEach
+            signingKeyPattern.findAll(script)
+                .minByOrNull { kotlin.math.abs(it.range.first - headerIndex) }
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.let { return it }
+        }
+        return bundles.firstNotNullOfOrNull { script ->
+            signingKeyPattern.findAll(script)
+                .singleOrNull()
+                ?.groupValues
+                ?.getOrNull(1)
+        }
     }
 
     private fun getText(
